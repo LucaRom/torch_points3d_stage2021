@@ -1,4 +1,6 @@
 /data/
+*.idea
+torch_points3d/data/
 *.pyc
 __pycache__
 .vscode
