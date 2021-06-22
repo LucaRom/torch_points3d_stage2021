@@ -1,0 +1,64 @@
+# @package data
+task: segmentation
+class: dales.DalesDataset
+dataset_name: "dales"
+dataroot: data
+first_subsampling: 0.04
+use_category: False
+#normal: True
+
+#pre_transforms:
+#  - transform: NormalizeScale
+#train_transforms:
+#  - transform: RandomNoise
+#    params:
+#      sigma: 0.01
+#      clip: 0.05
+#  - transform: GridSampling3D
+#    params:
+#      size: ${data.grid_size}
+#      mode: "mean"
+#      quantize_coords: True
+#test_transforms:
+#  - transform: GridSampling3D
+#    params:
+#      size: ${data.grid_size}
+#      quantize_coords: True
+#      mode: "mean"
+#val_transforms:
+#  - transform: GridSampling3D
+#    params:
+#      size: ${data.grid_size}
+#      quantize_coords: True
+#      mode: "mean"
+
+
+#process_workers: 8
+#apply_rotation: True
+#mode: "last"
+
+#train_transform:
+#  - transform: ElasticDistortion
+#  - transform: Random3AxisRotation
+#    params:
+#      apply_rotation: ${data.apply_rotation}
+#      rot_x: 2
+#      rot_y: 2
+#      rot_z: 180
+#  - transform: RandomScaleAnisotropic
+#    params:
+#      scales: [0.9, 1.1]
+#  - transform: GridSampling3D
+#    params:
+#      size: ${data.grid_size}
+#      quantize_coords: True
+#      mode: ${data.mode}
+#
+#val_transform:
+#  - transform: GridSampling3D
+#    params:
+#      size: ${data.grid_size}
+#      quantize_coords: True
+#      mode: ${data.mode}
+#
+#test_transform: ${data.val_transform}

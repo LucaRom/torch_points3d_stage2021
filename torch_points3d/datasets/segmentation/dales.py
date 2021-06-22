@@ -19,14 +19,21 @@ log = logging.getLogger(__name__)
 # not have to, it could just be a raw pytorch dataset"
 # https://github.com/nicolas-chaulet/torch-points3d/issues/471
 
+###################################Memory dataset ###################################
+
+DIR = os.path.dirname(os.path.realpath(__file__))
+dataroot = os.path.join(DIR, "..", "..", "..", "data", "dales")
+
+# path = "/wspace/disk01/lidar/classification_pts/torch-points3d/data/dales/raw"  # à remplacer avec chemmin hydra ou points3D
+
+las_list = [f for f in os.listdir(os.path.join(dataroot, "raw")) if
+            f.endswith('.las')]  # liste des fichiers avec extension .las
+las_num = [os.path.splitext(x)[0] for x in las_list]  # liste des fichiers sans extension
 
 class Dales(InMemoryDataset):
     """
     Class to handle DALES dataset for segmentation task.
     """
-
-    # Initiation methods
-    # ------------------------------------------------------------------------------------------------------------------
 
     def __init__(self, root, transform=None, pre_transform=None, pre_filter=None):
         super().__init__(root, transform=transform, pre_transform=pre_transform, pre_filter=pre_filter)
@@ -39,13 +46,15 @@ class Dales(InMemoryDataset):
         print(self.processed_dir)
 
         # Debug LR (temp)
-        print(f"Written path is {path}")
-        print(f"processed_paths 0 is :{self.processed_paths[0]}")
-        print(f"processed_paths 0 is :{self.processed_paths[1]}")
-        print(f"processed_paths 0 is :{self.processed_paths[2]}")
-        print(f"processed_paths 0 is :{self.processed_paths[3]}")
+        # print(f"Written path is {path}")
+        # print(f"processed_paths 0 is :{self.processed_paths[0]}")
+        # print(f"processed_paths 0 is :{self.processed_paths[1]}")
+        # print(f"processed_paths 0 is :{self.processed_paths[2]}")
+        # print(f"processed_paths 0 is :{self.processed_paths[3]}")
 
-        # self.data, self.slices = torch.load(path)
+        self.data, self.slices = torch.load(self.processed_paths[0])
+        print(self.data)
+        print(self.slices)
 
     @property
     def raw_file_names(self):
@@ -57,15 +66,15 @@ class Dales(InMemoryDataset):
 
     @property
     def processed_file_names(self):
-        """Il faut lister les fichiers qui sont processed en format pytorch. Les fichiers "processed" sont
-        produit dans la method "process". Cependant le dataset  vérifie la liste des fichiers déjà processed
-        avant d'activer process() pour ne pas traiter les fichiers déjà traités
+        """Ici on définit le nom des fichier processes , on tente de faire un gros fichier data avec toute mes raw, donc dans un seul
+        fichier "data.pt"
 
         Donc, ici on réfère à la liste des .las en entrées (sans extension) et on recherche s'il sont déjà processed
         (présents dans le dossier processed et sous le format nom_du_fichier_las.pt"
 
         """
-        return ["{}.pt".format(s) for s in las_num]
+        #return ["{}.pt".format(s) for s in las_num]
+        return ['data.pt']
 
     def download(self):
         pass
@@ -79,176 +88,110 @@ class Dales(InMemoryDataset):
         ou pos = x, y, z , x= liste des features et y les labels
 
         """
+        data_list = []
+
+        # for i in las_num:
+        #     #las_file = laspy.read(os.path.join(dataroot,'raw', "{}.las".format(i)))
+        #     las_file = laspy.read(os.path.join(dataroot, "raw", "{}.las".format(i)), mode='r')
+        #     #print(las_file)
+        #     las_xyz = np.vstack((las_file['X'], las_file['Y'], las_file['Z'])).astype(np.float32).T # .T -> transpose, si on le fait pas on a pas les bonne dimension des données
+        #     las_label = np.reshape(las_file.classification, (len(las_file), 1))
+        #     #print(las_xyz)
+        #     data = Data(pos=las_xyz)
+        #     data.y = las_label.T
+        #     #print(data.y)
+
         for i in las_num:
-            las_file = laspy.read(os.path.join(path, "{}.las".format(i)))
-            las_xyz = np.vstack((las_file['X'], las_file['Y'], las_file['Z'])).astype(np.float32).T
-            las_label = np.reshape(las_file.classification, (len(las_file), 1))
-            data = Data(pos=las_xyz)
-            data.y = las_label.T
+            las_file = laspy.read(os.path.join(dataroot, "raw", "{}.las".format(i)))
+            #print(las_file)
+
+            las_xyz = np.stack([las_file.x, las_file.y, las_file.z], axis=1)
+
+            las_label = np.array(las_file.classification).astype(np.int)
+            #print(las_xyz)
+            y = torch.from_numpy(las_label)
+            #y = self._remap_labels(y)
+            data = Data(pos=torch.from_numpy(las_xyz).type(torch.float), y=y)
 
             print(f"Processed file {i}, nb points = {data.pos.shape[0]}") #To remove once wrapper is set and calling log
             log.info("Processed file %s, nb points = %i", i, data.pos.shape[0])
-            torch.save(data, os.path.join(self.processed_dir, "{}.pt".format(i)))
+            #torch.save(data, os.path.join(self.processed_dir, "{}.pt".format(i)))
+
+            data_list.append(data)
 
 
+        data, slices = self.collate(data_list)
+        torch.save((data, slices), self.processed_paths[0])
 
+################################### Wrapper ###################################
 
+class DalesDataset(BaseDataset):
+    """ Wrapper around Dales that creates train and test datasets.
+    Parameters
+    ----------
+    dataset_opt: omegaconf.DictConfig
+        Config dictionary that should contain
+            - root,
+            - transform,
+            - pre_transform
+            - process_workers
+    """
 
-        # # Debug LR
-        # print(f"raw_paths in process : {raw_paths}")
-        # print(f"processed_paths in process : {processed_paths}")
-
-        # data_list = []
-        # for i in range(100):
-        #     print(f"i dans process: {i}")
-        #     data = read_ply(path.format(i))
-        #     data.y = torch.tensor([i % 10], dtype=torch.long)
-        #     if self.pre_filter is not None and not self.pre_filter(data):
-        #         continue
-        #     if self.pre_transform is not None:
-        #         data = self.pre_transform(data)
-        #     data_list.append(data)
-
-        # torch.save(self.collate(data_list[:80]), self.processed_paths[0])
-        # torch.save(self.collate(data_list[80:]), self.processed_paths[1])
-
-        #shutil.rmtree(osp.join(self.raw_dir, 'MPI-FAUST'))
-
-
-
-
-        # for i in self.raw_paths:
-        #     if os.path.exists(self.processed_paths[i]):
-        #         continue
-        #     os.makedirs(self.processed_paths[i])
+    def __init__(self, dataset_opt):
+        super().__init__(dataset_opt)
+        self.train_dataset = Dales(
+            self._data_path,
+            transform=self.train_transform,
+            pre_transform=self.pre_transform
+        )
         #
-        #     # seqs = self.SPLIT[split]
-        #     # scan_paths, label_paths = self._load_paths(seqs)
-        #     # scan_names = []
-        #     # for scan in scan_paths:
-        #     #     scan = os.path.splitext(scan)[0]
-        #     #     seq, _, scan_id = scan.split(os.path.sep)[-3:]
-        #     #     scan_names.append("{}_{}".format(seq, scan_id))
+        # self.val_dataset = SemanticKitti(
+        #     self._data_path,
+        #     split="val",
+        #     transform=self.val_transform,
+        #     pre_transform=self.pre_transform,
+        #     process_workers=process_workers,
+        # )
         #
-        #     ply_names = [os.path.splitext(x)[0] for x in os.listdir(path)]
-        #
-        #     #Debug LR
-        #     print(f"liste ply_names : {ply_names}")
-        #
-        #     out_files = [os.path.join(self.processed_paths[i], "{}.pt".format(ply_name)) for ply_name in
-        #                  ply_names]
-        #
-        #     #Debug LR
-        #     print(f"liste out_files : {out_files}")
-        #
-        #     # Read ply file
-        #     data = read_ply(file_path)
-        #     points = np.vstack((data['x'], data['y'], data['z'])).astype(np.float32).T
-        #     reflectance = np.expand_dims(data['reflectance'], 1).astype(np.float32)
-        #     if cloud_split == 'test':
-        #         int_features = None
-        #     else:
-        #         int_features = data['class'].astype(np.int32)
-        #
-        #     # args = zip(scan_paths, label_paths, [self.pre_transform for i in range(len(scan_paths))], out_files)
-        #     # if self.use_multiprocessing:
-        #     #     with multiprocessing.Pool(processes=self.process_workers) as pool:
-        #     #         pool.starmap(self.process_one, args)
-        #     # else:
-        #     #     for arg in args:
-        #     #         self.process_one(*arg)
+        # self.test_dataset = SemanticKitti(
+        #     self._data_path,
+        #     split="test",
+        #     transform=self.test_transform,
+        #     pre_transform=self.pre_transform,
+        #     process_workers=process_workers,
+        # )
 
-    # def len(self):
-    #     return len(self.processed_file_names)
-    #
-    # def get(self, idx):
-    #     data = torch.load(osp.join(self.processed_dir, 'data_{}.pt'.format(idx)))
-    #     return data
+    def get_tracker(self, wandb_log: bool, tensorboard_log: bool):
+        """Factory method for the tracker
+        Arguments:
+            wandb_log - Log using weight and biases
+            tensorboard_log - Log using tensorboard
+        Returns:
+            [BaseTracker] -- tracker
+        """
+        return SegmentationTracker(self, wandb_log=wandb_log, use_tensorboard=tensorboard_log)
 
-        # # Path of the folder containing ply files
-        # self.path = '../Data'
-        #
-        # # Path of the training files
-        # self.train_path = join(self.path, 'train_bin')
-        # self.test_path = join(self.path, 'test_bin')
-        #
-        # # List of training and test files
-        # self.train_files = np.sort([join(self.train_path, f) for f in listdir(self.train_path) if f[-4:] == '.ply'])
-        # self.test_files = np.sort([join(self.test_path, f) for f in listdir(self.test_path) if f[-4:] == '.ply'])
-        #
-        # # Proportion of validation scenes
-        # self.all_splits = [i for i in range(29)]
-        # self.validation_split = 1
-
-
-################################### DALES wrapper ###################################
-
-# class DalesDataset(BaseDataset):
-#     """ Wrapper around Dales that creates train and test datasets.
-#     Parameters
-#     ----------
-#     dataset_opt: omegaconf.DictConfig
-#         Config dictionary that should contain
-#             - root,
-#             - transform,
-#             - pre_transform
-#             - process_workers
-#     """
 #
-#     def __init__(self, dataset_opt):
-#         super().__init__(dataset_opt)
-#         self.train_dataset = Dales(
-#             self._data_path,
-#             transform=self.train_transform,
-#             pre_transform=self.pre_transform
-#         )
+# if __name__ == "__main__":
+#     DIR = os.path.dirname(os.path.realpath(__file__))
+#     dataroot = os.path.join(DIR, "..", "..", "..", "data", "dales")
 #
-#         self.val_dataset = SemanticKitti(
-#             self._data_path,
-#             split="val",
-#             transform=self.val_transform,
-#             pre_transform=self.pre_transform,
-#             process_workers=process_workers,
-#         )
+#     #path = "/wspace/disk01/lidar/classification_pts/torch-points3d/data/dales/raw"  # à remplacer avec chemmin hydra ou points3D
 #
-#         self.test_dataset = SemanticKitti(
-#             self._data_path,
-#             split="test",
-#             transform=self.test_transform,
-#             pre_transform=self.pre_transform,
-#             process_workers=process_workers,
-#         )
+#     las_list = [f for f in os.listdir(os.path.join(dataroot, "raw")) if f.endswith('.las')]  # liste des fichiers avec extension .las
+#     las_num = [os.path.splitext(x)[0] for x in las_list] # liste des fichiers sans extension
 #
-#     def get_tracker(self, wandb_log: bool, tensorboard_log: bool):
-#         """Factory method for the tracker
-#         Arguments:
-#             wandb_log - Log using weight and biases
-#             tensorboard_log - Log using tensorboard
-#         Returns:
-#             [BaseTracker] -- tracker
-#         """
-#         return SegmentationTracker(self, wandb_log=wandb_log, use_tensorboard=tensorboard_log)
-
-
-if __name__ == "__main__":
-    DIR = os.path.dirname(os.path.realpath(__file__))
-    dataroot = os.path.join(DIR, "..", "..", "..", "data", "dales")
-
-    #path = "/wspace/disk01/lidar/classification_pts/torch-points3d/data/dales/raw"  # à remplacer avec chemmin hydra ou points3D
-
-    las_list = [f for f in os.listdir(os.path.join(dataroot, "raw")) if f.endswith('.las')]  # liste des fichiers avec extension .las
-    las_num = [os.path.splitext(x)[0] for x in las_list] # liste des fichiers sans extension
-
-    # SemanticKitti(
-    #     dataroot, split="train", process_workers=10,
-    # )
-
-    print(f"last_list : {las_list}")
-    print(f"last_num : {las_num}")
-
-    print(f"this is the DIR: {DIR}")
-    print(f"this is the dataroot: {dataroot}")
+#     # SemanticKitti(
+#     #     dataroot, split="train", process_workers=10,
+#     # )
+#
+#     print(f"last_list : {las_list}")
+#     print(f"last_num : {las_num}")
+#
+#     print(f"this is the DIR: {DIR}")
+#     print(f"this is the dataroot: {dataroot}")
 
 
 
     #Dales(dataroot)
+    #DalesDataset(Dales(dataroot))
