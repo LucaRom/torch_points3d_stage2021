@@ -1,10 +1,13 @@
 # Those arguments defines the training hyper-parameters
 # @package training
-epochs: 550
+#epochs: 550
+epochs: 5
 num_workers: 7
-batch_size: 8
+batch_size: 5
+#batch_size: 1 # Original is set at 8
 cuda: 0
-precompute_multi_scale: True # Compute multiscate features on cpu for faster training / inference
+#precompute_multi_scale: True # Compute multiscate features on cpu for faster training / inference
+precompute_multi_scale: False
 optim:
   base_lr: 0.01
   grad_clip: 100

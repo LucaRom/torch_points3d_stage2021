@@ -1,0 +1,40 @@
+# @package data
+task: segmentation
+class: dales.DalesDataset
+dataset_name: "dales"
+dataroot: data
+first_subsampling: 0.02
+#first_subsampling: 10
+use_category: False
+
+#pre_transform:
+#  - transform: RandomSphere
+#    params:
+#      radius: 2
+#      strategy: random
+#      center: True
+
+train_transform:
+  - transform: AddOnes
+  - transform: AddFeatByKey
+    params:
+      add_to_x: True
+      feat_name: 'ones'
+  - transform: XYZFeature
+
+test_transform:
+  - transform: AddOnes
+  - transform: AddFeatByKey
+    params:
+      add_to_x: True
+      feat_name: 'ones'
+  - transform: XYZFeature
+
+#val_transform:
+#  - transform: RandomSphere
+#    params:
+#      radius: 2
+#      strategy: random
+#      center: True
+#  - transform: AddOnes
+
