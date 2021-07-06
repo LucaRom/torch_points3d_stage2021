@@ -5,9 +5,12 @@ import multiprocessing
 import logging
 import torch
 import laspy
+import time
+
+from multiprocessing import Pool
+
 
 from torch_geometric.data import InMemoryDataset, Dataset, Data
-
 from torch_points3d.datasets.base_dataset import BaseDataset
 from torch_points3d.core.data_transform.transforms import RandomSphere
 from torch_points3d.metrics.segmentation_tracker import SegmentationTracker
@@ -16,6 +19,44 @@ log = logging.getLogger(__name__)
 
 # reference for dales dataset : https://arxiv.org/abs/2004.11985
 # The dataset must be downloaded at go.udayton.edu/dales3d.
+
+################################### Utils ###################################
+
+def create_samples(las_image):
+    '''
+    This fonction was created to facilitate multiprocessing integration. It might be faster/better to multiprocess at the
+    subsampliong level only. This would mean that the first part of this fonction would be called in an iteration from
+    the appropritate process section wich would call the subsampling fonction as a multiprocess process...
+
+    :param las_image:
+    :return:
+    '''
+
+    las_data_list = []
+    las_file = laspy.read(os.path.join(dataroot, "train", "{}.las".format(las_image)))
+    # print(las_file)
+
+    las_xyz = np.stack([las_file.x, las_file.y, las_file.z], axis=1)
+
+    las_label = np.array(las_file.classification).astype(np.int)
+    # print(las_xyz)
+    y = torch.from_numpy(las_label)
+    # y = self._remap_labels(y)
+    data = Data(pos=torch.from_numpy(las_xyz).type(torch.float), y=y)
+
+    #print(data) #debug
+
+    # Subsampling
+    for sample_no in range(5):
+        random_sphere = RandomSphere(10, strategy="RANDOM")
+        data_sample = random_sphere(data.clone())
+
+        log.info("Processed file %s, sample_no = %s nb points = %i", las_image, sample_no, data.pos.shape[0])
+
+        las_data_list.append(data_sample)
+
+    return las_data_list
+
 
 ################################### Initial variables and paths ###################################
 
@@ -111,30 +152,51 @@ class Dales(InMemoryDataset):
         The subsampling range will give the number of total sample available for batching per .las file
 
         """
-        data_list = []
-        for i in train_num:
-            las_file = laspy.read(os.path.join(dataroot, "train", "{}.las".format(i)))
-            # print(las_file)
+        t1 = time.perf_counter() # Start time of processing (debugging)
 
-            las_xyz = np.stack([las_file.x, las_file.y, las_file.z], axis=1)
+        #multiprocessing test below
+        pool = Pool()
+        data_list_temp = pool.map(create_samples, train_num)
+        flat_data_list = [x for z in data_list_temp for x in z]
 
-            las_label = np.array(las_file.classification).astype(np.int)
-            # print(las_xyz)
-            y = torch.from_numpy(las_label)
-            # y = self._remap_labels(y)
-            data = Data(pos=torch.from_numpy(las_xyz).type(torch.float), y=y)
+        print(data_list_temp)
+        print(flat_data_list)
 
-            # Subsampling
-            for sample_no in range (5):
-                random_sphere = RandomSphere(0.1, strategy="RANDOM")
-                data_sample = random_sphere(data.clone())
-
-                log.info("Processed file %s, sample_no = %s nb points = %i", i, sample_no, data.pos.shape[0])
-
-                data_list.append(data_sample)
-
-        data, slices = self.collate(data_list)
+        data, slices = self.collate(flat_data_list)
         torch.save((data, slices), self.processed_paths[0])
+
+        #
+        # data_list = []
+        # for i in train_num:
+        #     las_file = laspy.read(os.path.join(dataroot, "train", "{}.las".format(i)))
+        #     # print(las_file)
+        #
+        #     las_xyz = np.stack([las_file.x, las_file.y, las_file.z], axis=1)
+        #
+        #     las_label = np.array(las_file.classification).astype(np.int)
+        #     # print(las_xyz)
+        #     y = torch.from_numpy(las_label)
+        #     # y = self._remap_labels(y)
+        #     data = Data(pos=torch.from_numpy(las_xyz).type(torch.float), y=y)
+        #
+        #     # Subsampling
+        #     for sample_no in range (5):
+        #         #random_sphere = RandomSphere(0.1, strategy="RANDOM")
+        #         random_sphere = RandomSphere(10, strategy="RANDOM")
+        #         data_sample = random_sphere(data.clone())
+        #
+        #         log.info("Processed file %s, sample_no = %s nb points = %i", i, sample_no, data.pos.shape[0])
+        #
+        #         data_list.append(data_sample)
+        #
+        # print(data_list)
+        #
+        # data, slices = self.collate(data_list)
+        # torch.save((data, slices), self.processed_paths[0])
+        #
+        # t2 = time.perf_counter() #end time of processing training data
+        #
+        # print(f'Processing training data finished in {t2-t1} seconds')
 
         ### Create test dataset
         data_list = []
