@@ -3,15 +3,16 @@ task: segmentation
 class: dales.DalesDataset
 dataset_name: "dales"
 dataroot: data
-first_subsampling: 0.02
-#first_subsampling: 10
+#first_subsampling: 0.02
+first_subsampling : 10 # Very correlated with memory used. Need to verify if linked to this : https://github.com/HuguesTHOMAS/KPConv/issues/135#issuecomment-771032535
 use_category: False
 
 #pre_transform:
-#  - transform: RandomSphere
+#  - transform: GridSphereSampling
 #    params:
-#      radius: 2
-#      strategy: random
+#      radius: 15
+#      grid_size: 15
+#      delattr_kd_tree: True
 #      center: True
 
 train_transform:

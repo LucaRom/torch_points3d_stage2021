@@ -165,41 +165,11 @@ class Dales(InMemoryDataset):
         data, slices = self.collate(flat_data_list)
         torch.save((data, slices), self.processed_paths[0])
 
-        # data_list = []
-        # for i in train_num:
-        #     las_file = laspy.read(os.path.join(dataroot, "train", "{}.las".format(i)))
-        #     # print(las_file)
-        #
-        #     las_xyz = np.stack([las_file.x, las_file.y, las_file.z], axis=1)
-        #
-        #     las_label = np.array(las_file.classification).astype(np.int)
-        #     # print(las_xyz)
-        #     y = torch.from_numpy(las_label)
-        #     # y = self._remap_labels(y)
-        #     data = Data(pos=torch.from_numpy(las_xyz).type(torch.float), y=y)
-        #
-        #     # Subsampling
-        #     for sample_no in range (5):
-        #         #random_sphere = RandomSphere(0.1, strategy="RANDOM")
-        #         random_sphere = RandomSphere(10, strategy="RANDOM")
-        #         data_sample = random_sphere(data.clone())
-        #
-        #         log.info("Processed file %s, sample_no = %s nb points = %i", i, sample_no, data.pos.shape[0])
-        #
-        #         data_list.append(data_sample)
-        #
-        # print(data_list)
-        #
-        # data, slices = self.collate(data_list)
-        # torch.save((data, slices), self.processed_paths[0])
-        #
-        # t2 = time.perf_counter() #end time of processing training data
-        #
-        # print(f'Processing training data finished in {t2-t1} seconds')
-
-        ### Create test dataset
         data_list = []
-        for i in test_num:
+        for i in train_num:
+            las_file = laspy.read(os.path.join(dataroot, "train", "{}.las".format(i)))
+            # print(las_file)
+
             las_xyz = np.stack([las_file.x, las_file.y, las_file.z], axis=1)
 
             las_label = np.array(las_file.classification).astype(np.int)
@@ -208,16 +178,46 @@ class Dales(InMemoryDataset):
             # y = self._remap_labels(y)
             data = Data(pos=torch.from_numpy(las_xyz).type(torch.float), y=y)
 
-            for sample_no in range (5):
-                random_sphere = RandomSphere(0.1, strategy="RANDOM")
-                data_sample = random_sphere(data.clone())
+            # # Subsampling
+            # for sample_no in range (5):
+            #     #random_sphere = RandomSphere(0.1, strategy="RANDOM")
+            #     random_sphere = RandomSphere(10, strategy="RANDOM")
+            #     data_sample = random_sphere(data.clone())
+            #
+            #     log.info("Processed file %s, sample_no = %s nb points = %i", i, sample_no, data.pos.shape[0])
+            #
+            #     data_list.append(data_sample)
 
-                log.info("Processed file %s, sample_no = %s nb points = %i", i, sample_no, data.pos.shape[0])
-
-                data_list.append(data_sample)
+        # print(data_list)
 
         data, slices = self.collate(data_list)
-        torch.save((data, slices), self.processed_paths[1])
+        torch.save((data, slices), self.processed_paths[0])
+
+        t2 = time.perf_counter() #end time of processing training data
+
+        print(f'Processing training data finished in {t2-t1} seconds')
+
+        # ### Create test dataset
+        # data_list = []
+        # for i in test_num:
+        #     las_xyz = np.stack([las_file.x, las_file.y, las_file.z], axis=1)
+        #
+        #     las_label = np.array(las_file.classification).astype(np.int)
+        #     # print(las_xyz)
+        #     y = torch.from_numpy(las_label)
+        #     # y = self._remap_labels(y)
+        #     data = Data(pos=torch.from_numpy(las_xyz).type(torch.float), y=y)
+        #
+        #     for sample_no in range (5):
+        #         random_sphere = RandomSphere(0.1, strategy="RANDOM")
+        #         data_sample = random_sphere(data.clone())
+        #
+        #         log.info("Processed file %s, sample_no = %s nb points = %i", i, sample_no, data.pos.shape[0])
+        #
+        #         data_list.append(data_sample)
+        #
+        # data, slices = self.collate(data_list)
+        # torch.save((data, slices), self.processed_paths[1])
 
     @property
     def num_classes(self):

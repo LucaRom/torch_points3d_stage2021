@@ -9,13 +9,13 @@ import time
 
 from functools import partial
 
-from multiprocessing import Pool, set_start_method, get_context
+from multiprocessing import Pool, set_start_method, get_context, Process
 #set_start_method("spawn")
 
 
 from torch_geometric.data import InMemoryDataset, Dataset, Data
 from torch_points3d.datasets.base_dataset import BaseDataset
-from torch_points3d.core.data_transform.transforms import RandomSphere
+from torch_points3d.core.data_transform.transforms import RandomSphere, GridSphereSampling
 from torch_points3d.metrics.segmentation_tracker import SegmentationTracker
 
 log = logging.getLogger(__name__)
@@ -25,7 +25,7 @@ log = logging.getLogger(__name__)
 
 ################################### Utils ###################################
 
-def create_samples(las_image, set_val):
+def create_subsamples(data):
     '''
     This fonction was created to facilitate multiprocessing integration. It might be faster/better to multiprocess at the
     subsampliong level only. This would mean that the first part of this fonction would be called in an iteration from
@@ -34,36 +34,44 @@ def create_samples(las_image, set_val):
     :param las_image:
     :return:
     '''
+    #
+    # las_data_list = []
+    # las_file = laspy.read(os.path.join(dataroot, set_val, "{}.las".format(las_image)))
+    #
+    # las_file_path = os.path.join(dataroot, set_val, "{}.las".format(las_image))
+    #
+    # #print(f"this is las file path {las_file_path}") #debug
+    #
+    # las_xyz = np.stack([las_file.x, las_file.y, las_file.z], axis=1)
+    #
+    # las_label = np.array(las_file.classification).astype(np.int)
+    # # print(las_xyz)
+    # y = torch.from_numpy(las_label)
+    # # y = self._remap_labels(y)
+    # data = Data(pos=torch.from_numpy(las_xyz).type(torch.float), y=y)
 
-    las_data_list = []
-    las_file = laspy.read(os.path.join(dataroot, set_val, "{}.las".format(las_image)))
+    sampler = GridSphereSampling(radius=15, grid_size=15, delattr_kd_tree=True, center=True)
+    data_sample = sampler(data.clone())
 
-    las_file_path = os.path.join(dataroot, set_val, "{}.las".format(las_image))
+    return data_sample
 
-    #print(f"this is las file path {las_file_path}") #debug
-
-    las_xyz = np.stack([las_file.x, las_file.y, las_file.z], axis=1)
-
-    las_label = np.array(las_file.classification).astype(np.int)
-    # print(las_xyz)
-    y = torch.from_numpy(las_label)
-    # y = self._remap_labels(y)
-    data = Data(pos=torch.from_numpy(las_xyz).type(torch.float), y=y)
+    # print(data_sample)
 
     #print(data) #debug
-
+    #
     # Subsampling
-    for sample_no in range(500):
-        random_sphere = RandomSphere(1, strategy="RANDOM")
-        data_sample = random_sphere(data.clone())
-
-        log.info("Processed file %s, sample_no = %s nb points = %i", las_image, sample_no, data.pos.shape[0])
-        print(f"Processed file {las_image}, sample_no = {sample_no} nb points = {data.pos.shape[0]}")
-
-        las_data_list.append(data_sample)
-
-    return las_data_list
-
+    # for sample_no in range(100):
+    #     sampler = GridSphereSampling(radius=15, grid_size=15, delattr_kd_tree=True, center=True)
+    #     data_sample = sampler(data.clone())
+    #
+    #     print(data_sample)
+    #
+    #     log.info("Processed file %s, sample_no = %s nb points = %i", las_image, sample_no, data.pos.shape[0])
+    #     print(f"Processed file {las_image}, sample_no = {sample_no} nb points = {data.pos.shape[0]}")
+    #
+    #     las_data_list.append(data_sample)
+    #
+    # return las_data_list
 
 ################################### Initial variables and paths ###################################
 
@@ -122,8 +130,6 @@ class Dales(InMemoryDataset):
         else:
             raise ValueError("Split %s not recognised" % split)
 
-
-
     @property
     def raw_file_names(self):
         """
@@ -167,52 +173,237 @@ class Dales(InMemoryDataset):
         fix if possible.
 
         """
-        # Load the appropriate .pt file according to the wrapper class argument (DalesDataset())
+
+###### NORMAL LOADING FOR EACH LAS BELOW
+        # if self._split == "train":
+        #     data_list = []
+        #     for i in train_num:
+        #         las_file = laspy.read(os.path.join(dataroot, "train", "{}.las".format(i)))
+        #         # print(las_file)
+        #
+        #         las_xyz = np.stack([las_file.x, las_file.y, las_file.z], axis=1)
+        #
+        #         las_label = np.array(las_file.classification).astype(np.int)
+        #         # print(las_xyz)
+        #         y = torch.from_numpy(las_label)
+        #         # y = self._remap_labels(y)
+        #         data = Data(pos=torch.from_numpy(las_xyz).type(torch.float), y=y)
+        #
+        #         log.info("Processed file %s, nb points = %i", i, data.pos.shape[0])
+        #
+        #         data_list.append(data)
+        #
+        #     data, slices = self.collate(data_list)
+        #     torch.save((data, slices), self.processed_paths[0])
+        #
+        # elif self._split == "test":
+        #     data_list = []
+        #     for i in test_num:
+        #         las_file = laspy.read(os.path.join(dataroot, "test", "{}.las".format(i)))
+        #         # print(las_file)
+        #
+        #         las_xyz = np.stack([las_file.x, las_file.y, las_file.z], axis=1)
+        #
+        #         las_label = np.array(las_file.classification).astype(np.int)
+        #         # print(las_xyz)
+        #         y = torch.from_numpy(las_label)
+        #         # y = self._remap_labels(y)
+        #         data = Data(pos=torch.from_numpy(las_xyz).type(torch.float), y=y)
+        #
+        #         log.info("Processed file %s, nb points = %i", i, data.pos.shape[0])
+        #
+        #         data_list.append(data)
+        #
+        #     data, slices = self.collate(data_list)
+        #     torch.save((data, slices), self.processed_paths[1])
+        #
+        # else:
+        #     raise ValueError("Split %s not recognised" % split)
+
+### Test gridspheresampling without fonction
+
         if self._split == "train":
+            data_list = []
+            for i in train_num:
+                las_file = laspy.read(os.path.join(dataroot, "train", "{}.las".format(i)))
+                # print(las_file)
 
-            t1 = time.perf_counter()  # Start time of processing (debugging)
+                las_xyz = np.stack([las_file.x, las_file.y, las_file.z], axis=1)
 
-            ### Create train dataset
-            pool = get_context("spawn").Pool()                              # Creating pools for multiprocess
-            create_samples_x = partial(create_samples, set_val="train")     # Set 'static' variable in iteration
-            data_list_temp = pool.map(create_samples_x, train_num)          # Mapping process with train_num range
-            flat_data_list = [x for z in data_list_temp for x in z]         # Flattening list of lists from mapping
+                las_label = np.array(las_file.classification).astype(np.int)
+                # print(las_xyz)
+                y = torch.from_numpy(las_label)
+                # y = self._remap_labels(y)
+                data = Data(pos=torch.from_numpy(las_xyz).type(torch.float), y=y)
 
-            # Create tensor and save it as "train.pt" wich is 'processed_paths[0]
-            data, slices = self.collate(flat_data_list)
+                sampler = GridSphereSampling(radius=15, grid_size=15, delattr_kd_tree=True, center=True)
+                data_samples = sampler(data.clone()) # create a whole list of samples
+
+                # print(f"this is data {data}")
+                # print(f"this is sampler {data_sample}")
+
+                for sample in data_samples:
+                    data_list.append(sample)
+
+                log.info("Processed file %s, nb points = %i, nb samples = %i", i, data.pos.shape[0], len(data_samples))
+
+            #print(data_list)
+
+            data, slices = self.collate(data_list)
             torch.save((data, slices), self.processed_paths[0])
 
-            # pool.terminate()
-            # pool.join()
-            # pool.close()
-
-            t2 = time.perf_counter()  # end time of processing training data
-
-            print(f'Processing training data finished in {t2 - t1} seconds')
-
         elif self._split == "test":
-            pool_test = get_context("spawn").Pool()  # Creating pools for multiprocess
-            create_samples_x = partial(create_samples, set_val="test")
-            data_list_temp = pool_test.map(create_samples_x, test_num)  # Mapping process with test_num range
-            flat_data_list = [x for z in data_list_temp for x in z]  # Flattening list since pool.map return list of lists
+            data_list = []
+            for i in test_num:
+                las_file = laspy.read(os.path.join(dataroot, "test", "{}.las".format(i)))
+                # print(las_file)
 
-            # Create tensor and save it as "train.pt" wich is 'processed_paths[0]
-            data, slices = self.collate(flat_data_list)
+                las_xyz = np.stack([las_file.x, las_file.y, las_file.z], axis=1)
+
+                las_label = np.array(las_file.classification).astype(np.int)
+                # print(las_xyz)
+                y = torch.from_numpy(las_label)
+                # y = self._remap_labels(y)
+                data = Data(pos=torch.from_numpy(las_xyz).type(torch.float), y=y)
+
+                sampler = GridSphereSampling(radius=15, grid_size=15, delattr_kd_tree=True, center=True)
+                data_samples = sampler(data.clone()) # Creates a whole list of samples
+
+                # print(f"this is data {data}")
+                # print(f"this is sampler {data_sample}")
+
+                for sample in data_samples:
+                    data_list.append(sample)
+
+
+                log.info("Processed file %s, nb points = %i", i, data.pos.shape[0])
+
+            #print(data_list)
+
+            data, slices = self.collate(data_list)
             torch.save((data, slices), self.processed_paths[1])
-
-            # pool_test.terminate()
-            # pool_test.join()
-            # pool_test.close()
 
         else:
             raise ValueError("Split %s not recognised" % split)
 
+### Unsure below
+        # data_list = []
+        # for i in train_num:
+        #     las_file = laspy.read(os.path.join(dataroot, "train", "{}.las".format(i)))
+        #     # print(las_file)
         #
+        #     las_xyz = np.stack([las_file.x, las_file.y, las_file.z], axis=1)
+        #
+        #     las_label = np.array(las_file.classification).astype(np.int)
+        #     # print(las_xyz)
+        #     y = torch.from_numpy(las_label)
+        #     # y = self._remap_labels(y)
+        #     data = Data(pos=torch.from_numpy(las_xyz).type(torch.float), y=y)
+        #
+        #     # Subsampling
+        #     for sample_no in range (5):
+        #         #random_sphere = RandomSphere(0.1, strategy="RANDOM")
+        #         random_sphere = RandomSphere(10, strategy="RANDOM")
+        #         data_sample = random_sphere(data.clone())
+        #
+        #         log.info("Processed file %s, sample_no = %s nb points = %i", i, sample_no, data.pos.shape[0])
+        #
+        #         data_list.append(data_sample)
+        #
+        # print(data_list)
+        #
+        # data, slices = self.collate(data_list)
+        # torch.save((data, slices), self.processed_paths[0])
+
+        # Load the appropriate .pt file according to the wrapper class argument (DalesDataset())
+        # if self._split == "train":
+        #
+        #     t1 = time.perf_counter()  # Start time of processing (debugging)
+        #
+        #     ### Create train dataset
+        #     pool = get_context("spawn").Pool()                              # Creating pools for multiprocess
+        #     create_samples_x = partial(create_samples, set_val="train")     # Set 'static' variable in iteration
+        #     data_list_temp = pool.map(create_samples_x, train_num)          # Mapping process with train_num range
+        #     flat_data_list = [x for z in data_list_temp for x in z]         # Flattening list of lists from mapping
+        #
+        #     # Create tensor and save it as "train.pt" wich is 'processed_paths[0]
+        #     data, slices = self.collate(flat_data_list)
+        #     torch.save((data, slices), self.processed_paths[0])
+        #
+        #     # pool.terminate()
+        #     # pool.join()
+        #     # pool.close()
+        #
+        #     t2 = time.perf_counter()  # end time of processing training data
+        #
+        #     print(f'Processing training data finished in {t2 - t1} seconds')
+
+        # ### Create train dataset
+        # if self._split == "train":
+        #     data_list = []
+        #     for i in train_num:
+        #         las_file = laspy.read(os.path.join(dataroot, "train", "{}.las".format(i)))
+        #         # print(las_file)
+        #
+        #         las_xyz = np.stack([las_file.x, las_file.y, las_file.z], axis=1)
+        #
+        #         las_label = np.array(las_file.classification).astype(np.int)
+        #         # print(las_xyz)
+        #         y = torch.from_numpy(las_label)
+        #         # y = self._remap_labels(y)
+        #         data = Data(pos=torch.from_numpy(las_xyz).type(torch.float), y=y)
+        #
+        #         # Call subsampliong fonction in multiprocess
+        #
+        #         #     pool = get_context("spawn").Pool()                              # Creating pools for multiprocess
+        #         #     create_samples_x = partial(create_samples, set_val="train")     # Set 'static' variable in iteration
+        #         #     data_list_temp = pool.map(create_samples_x, train_num)          # Mapping process with train_num range
+        #         #     flat_data_list = [x for z in data_list_temp for x in z]         # Flattening list of lists from mapping
+        #
+        #         def create_subsamples(range_no):
+        #
+        #         pool = get_context("spawn").Pool()  # Creating pools for multiprocess
+        #         data_list_temp = pool.map(create_samples, 500)          # Mapping process with train_num range
+        #
+        #         # Subsampling
+        #         for sample_no in range (5):
+        #             #random_sphere = RandomSphere(0.1, strategy="RANDOM")
+        #             random_sphere = RandomSphere(10, strategy="RANDOM")
+        #             data_sample = random_sphere(data.clone())
+        #
+        #             log.info("Processed file %s, sample_no = %s nb points = %i", i, sample_no, data.pos.shape[0])
+        #
+        #             data_list.append(data_sample)
+        #
+        #     print(data_list)
+        #
+        #     data, slices = self.collate(data_list)
+        #     torch.save((data, slices), self.processed_paths[0])
+        #
+        # elif self._split == "test":
+        #     pool_test = get_context("spawn").Pool()  # Creating pools for multiprocess
+        #     create_samples_x = partial(create_samples, set_val="test")
+        #     data_list_temp = pool_test.map(create_samples_x, test_num)  # Mapping process with test_num range
+        #     flat_data_list = [x for z in data_list_temp for x in z]  # Flattening list since pool.map return list of lists
+        #
+        #     # Create tensor and save it as "train.pt" wich is 'processed_paths[0]
+        #     data, slices = self.collate(flat_data_list)
+        #     torch.save((data, slices), self.processed_paths[1])
+        #
+        #     # pool_test.terminate()
+        #     # pool_test.join()
+        #     # pool_test.close()
+        #
+        # else:
+        #     raise ValueError("Split %s not recognised" % split)
+
+
+#### GOOD FOR FONCTION BELOW
         # t1 = time.perf_counter() # Start time of processing (debugging)
         #
         # ### Create train dataset
-        # pool = Pool()                                               # Creating pools for multiprocess
-        # create_samples_x = partial(create_samples, set_val="train")
+        # pool = get_context("spawn").Pool()  # Creating pools for multiprocess                                            # Creating pools for multiprocess
+        # create_samples_x = partial(create_subsamples, set_val="train")
         # data_list_temp = pool.map(create_samples_x, train_num)      # Mapping process with train_num range
         # flat_data_list = [x for z in data_list_temp for x in z]     # Flattening list since pool.map return list of lists
         #
@@ -227,15 +418,15 @@ class Dales(InMemoryDataset):
         # t2 = time.perf_counter() #end time of processing training data
         #
         # print(f'Processing training data finished in {t2-t1} seconds')
-
-        ### Create test dataset
-        # Same as train dataset, but using 'test_num' for mapping and processed_paths[1] for 'test.pt'
-
-
-
-        # pool = Pool()                                               # Creating pools for multiprocess
-        # create_samples_x = partial(create_samples, set_val="test")
-        # data_list_temp = pool.map(create_samples_x, test_num)       # Mapping process with test_num range
+        #
+        # ## Create test dataset
+        # #Same as train dataset, but using 'test_num' for mapping and processed_paths[1] for 'test.pt'
+        #
+        #
+        #
+        # pool_test = get_context("spawn").Pool()  # Creating pools for multiprocess
+        # create_samples_x = partial(create_subsamples, set_val="test")
+        # data_list_temp = pool_test.map(create_samples_x, test_num)       # Mapping process with test_num range
         # flat_data_list = [x for z in data_list_temp for x in z]     # Flattening list since pool.map return list of lists
         #
         # # Create tensor and save it as "train.pt" wich is 'processed_paths[0]
