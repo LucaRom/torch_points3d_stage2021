@@ -7,7 +7,10 @@ import torch
 import laspy
 import time
 
-from multiprocessing import Pool
+from functools import partial
+
+from multiprocessing import Pool, set_start_method, get_context
+#set_start_method("spawn")
 
 
 from torch_geometric.data import InMemoryDataset, Dataset, Data
@@ -22,7 +25,7 @@ log = logging.getLogger(__name__)
 
 ################################### Utils ###################################
 
-def create_samples(las_image):
+def create_samples(las_image, set_val):
     '''
     This fonction was created to facilitate multiprocessing integration. It might be faster/better to multiprocess at the
     subsampliong level only. This would mean that the first part of this fonction would be called in an iteration from
@@ -33,8 +36,11 @@ def create_samples(las_image):
     '''
 
     las_data_list = []
-    las_file = laspy.read(os.path.join(dataroot, "train", "{}.las".format(las_image)))
-    # print(las_file)
+    las_file = laspy.read(os.path.join(dataroot, set_val, "{}.las".format(las_image)))
+
+    las_file_path = os.path.join(dataroot, set_val, "{}.las".format(las_image))
+
+    #print(f"this is las file path {las_file_path}") #debug
 
     las_xyz = np.stack([las_file.x, las_file.y, las_file.z], axis=1)
 
@@ -47,11 +53,12 @@ def create_samples(las_image):
     #print(data) #debug
 
     # Subsampling
-    for sample_no in range(5):
-        random_sphere = RandomSphere(10, strategy="RANDOM")
+    for sample_no in range(500):
+        random_sphere = RandomSphere(1, strategy="RANDOM")
         data_sample = random_sphere(data.clone())
 
         log.info("Processed file %s, sample_no = %s nb points = %i", las_image, sample_no, data.pos.shape[0])
+        print(f"Processed file {las_image}, sample_no = {sample_no} nb points = {data.pos.shape[0]}")
 
         las_data_list.append(data_sample)
 
@@ -100,6 +107,8 @@ class Dales(InMemoryDataset):
 
     def __init__(self, root, split=None, transform=None, pre_transform=None, pre_filter=None):
 
+        self._split = split
+
         super().__init__(root, transform=transform, pre_transform=pre_transform, pre_filter=pre_filter)
 
         # Processed path : a mieux expliquer pour final -> doit pointer vert les dossier "processed"
@@ -112,6 +121,7 @@ class Dales(InMemoryDataset):
             self.data, self.slices = torch.load(self.processed_paths[1])
         else:
             raise ValueError("Split %s not recognised" % split)
+
 
 
     @property
@@ -150,75 +160,91 @@ class Dales(InMemoryDataset):
 
         Second part create subsamples (according to the range) using the RandomSphere fonction from torch-points3d
         The subsampling range will give the number of total sample available for batching per .las file
+        
+        While spawning can be slower than forking from pools, it avoids alot of 'hanging' problem encounter while simply 
+        using Pools in multiprocessing. It is still alot faster than no multiprocessing at all. It also seems to make 
+        the logging more complex. As a workaround, a print fonction was placed in the fonction, but the log should be 
+        fix if possible.
 
         """
-        t1 = time.perf_counter() # Start time of processing (debugging)
+        # Load the appropriate .pt file according to the wrapper class argument (DalesDataset())
+        if self._split == "train":
 
-        #multiprocessing test below
-        pool = Pool()
-        data_list_temp = pool.map(create_samples, train_num)
-        flat_data_list = [x for z in data_list_temp for x in z]
+            t1 = time.perf_counter()  # Start time of processing (debugging)
 
-        print(data_list_temp)
-        print(flat_data_list)
+            ### Create train dataset
+            pool = get_context("spawn").Pool()                              # Creating pools for multiprocess
+            create_samples_x = partial(create_samples, set_val="train")     # Set 'static' variable in iteration
+            data_list_temp = pool.map(create_samples_x, train_num)          # Mapping process with train_num range
+            flat_data_list = [x for z in data_list_temp for x in z]         # Flattening list of lists from mapping
 
-        data, slices = self.collate(flat_data_list)
-        torch.save((data, slices), self.processed_paths[0])
+            # Create tensor and save it as "train.pt" wich is 'processed_paths[0]
+            data, slices = self.collate(flat_data_list)
+            torch.save((data, slices), self.processed_paths[0])
+
+            # pool.terminate()
+            # pool.join()
+            # pool.close()
+
+            t2 = time.perf_counter()  # end time of processing training data
+
+            print(f'Processing training data finished in {t2 - t1} seconds')
+
+        elif self._split == "test":
+            pool_test = get_context("spawn").Pool()  # Creating pools for multiprocess
+            create_samples_x = partial(create_samples, set_val="test")
+            data_list_temp = pool_test.map(create_samples_x, test_num)  # Mapping process with test_num range
+            flat_data_list = [x for z in data_list_temp for x in z]  # Flattening list since pool.map return list of lists
+
+            # Create tensor and save it as "train.pt" wich is 'processed_paths[0]
+            data, slices = self.collate(flat_data_list)
+            torch.save((data, slices), self.processed_paths[1])
+
+            # pool_test.terminate()
+            # pool_test.join()
+            # pool_test.close()
+
+        else:
+            raise ValueError("Split %s not recognised" % split)
 
         #
-        # data_list = []
-        # for i in train_num:
-        #     las_file = laspy.read(os.path.join(dataroot, "train", "{}.las".format(i)))
-        #     # print(las_file)
+        # t1 = time.perf_counter() # Start time of processing (debugging)
         #
-        #     las_xyz = np.stack([las_file.x, las_file.y, las_file.z], axis=1)
+        # ### Create train dataset
+        # pool = Pool()                                               # Creating pools for multiprocess
+        # create_samples_x = partial(create_samples, set_val="train")
+        # data_list_temp = pool.map(create_samples_x, train_num)      # Mapping process with train_num range
+        # flat_data_list = [x for z in data_list_temp for x in z]     # Flattening list since pool.map return list of lists
         #
-        #     las_label = np.array(las_file.classification).astype(np.int)
-        #     # print(las_xyz)
-        #     y = torch.from_numpy(las_label)
-        #     # y = self._remap_labels(y)
-        #     data = Data(pos=torch.from_numpy(las_xyz).type(torch.float), y=y)
-        #
-        #     # Subsampling
-        #     for sample_no in range (5):
-        #         #random_sphere = RandomSphere(0.1, strategy="RANDOM")
-        #         random_sphere = RandomSphere(10, strategy="RANDOM")
-        #         data_sample = random_sphere(data.clone())
-        #
-        #         log.info("Processed file %s, sample_no = %s nb points = %i", i, sample_no, data.pos.shape[0])
-        #
-        #         data_list.append(data_sample)
-        #
-        # print(data_list)
-        #
-        # data, slices = self.collate(data_list)
+        # # Create tensor and save it as "train.pt" wich is 'processed_paths[0]
+        # data, slices = self.collate(flat_data_list)
         # torch.save((data, slices), self.processed_paths[0])
+        #
+        # pool.terminate()
+        # pool.join()
+        # pool.close()
         #
         # t2 = time.perf_counter() #end time of processing training data
         #
         # print(f'Processing training data finished in {t2-t1} seconds')
 
         ### Create test dataset
-        data_list = []
-        for i in test_num:
-            las_xyz = np.stack([las_file.x, las_file.y, las_file.z], axis=1)
+        # Same as train dataset, but using 'test_num' for mapping and processed_paths[1] for 'test.pt'
 
-            las_label = np.array(las_file.classification).astype(np.int)
-            # print(las_xyz)
-            y = torch.from_numpy(las_label)
-            # y = self._remap_labels(y)
-            data = Data(pos=torch.from_numpy(las_xyz).type(torch.float), y=y)
 
-            for sample_no in range (5):
-                random_sphere = RandomSphere(0.1, strategy="RANDOM")
-                data_sample = random_sphere(data.clone())
 
-                log.info("Processed file %s, sample_no = %s nb points = %i", i, sample_no, data.pos.shape[0])
-
-                data_list.append(data_sample)
-
-        data, slices = self.collate(data_list)
-        torch.save((data, slices), self.processed_paths[1])
+        # pool = Pool()                                               # Creating pools for multiprocess
+        # create_samples_x = partial(create_samples, set_val="test")
+        # data_list_temp = pool.map(create_samples_x, test_num)       # Mapping process with test_num range
+        # flat_data_list = [x for z in data_list_temp for x in z]     # Flattening list since pool.map return list of lists
+        #
+        # # Create tensor and save it as "train.pt" wich is 'processed_paths[0]
+        # data, slices = self.collate(flat_data_list)
+        # torch.save((data, slices), self.processed_paths[1])
+        #
+        # pool.terminate()
+        # pool.join()
+        # pool.close()
 
     @property
     def num_classes(self):

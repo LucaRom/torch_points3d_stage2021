@@ -16,28 +16,37 @@ import laspy
 from laspy.file import File
 import numpy as np
 
-# las = laspy.read('/wspace/disk01/lidar/classification_pts/torch-points3d/data/dales/raw/5080_54400.las')
+import torch
 
-inFile = laspy.read('/wspace/disk01/lidar/classification_pts/torch-points3d/data/dales/raw/5080_54400.las')
+t = torch.cuda.get_device_properties(0).total_memory
+r = torch.cuda.memory_reserved(0)
+a = torch.cuda.memory_allocated(0)
+f = r-a  # free inside reserved
 
-pointformat = inFile.point_format
-for spec in inFile.point_format:
-    print(spec.name)
+print(f"Total {t}, reserved {r}, allocated {a}, free {f}" )
 
-points = np.vstack((inFile['X'], inFile['Y'], inFile['Z'])).astype(np.float32).T
-points_x = np.vstack((inFile.x, inFile.y, inFile.y)).astype(np.float32).T
-las_label = np.reshape(inFile.classification, (len(inFile), 1))
-#label = inFile.classification
-#las_label = label.reshape(-1,1)
-print(points)
-print(points_x)
-print(las_label.T)
-
-with laspy.open('/wspace/disk01/lidar/classification_pts/torch-points3d/data/dales/raw/5080_54400.las') as f:
-    print(f"Point format:       {f.header.point_format}")
-    print(f"Number of points:   {f.header.point_count}")
-    print(f"Number of vlrs:     {len(f.header.vlrs)}")
-
+# # las = laspy.read('/wspace/disk01/lidar/classification_pts/torch-points3d/data/dales/raw/5080_54400.las')
+#
+# inFile = laspy.read('/wspace/disk01/lidar/classification_pts/torch-points3d/data/dales/raw/5080_54400.las')
+#
+# pointformat = inFile.point_format
+# for spec in inFile.point_format:
+#     print(spec.name)
+#
+# points = np.vstack((inFile['X'], inFile['Y'], inFile['Z'])).astype(np.float32).T
+# points_x = np.vstack((inFile.x, inFile.y, inFile.y)).astype(np.float32).T
+# las_label = np.reshape(inFile.classification, (len(inFile), 1))
+# #label = inFile.classification
+# #las_label = label.reshape(-1,1)
+# print(points)
+# print(points_x)
+# print(las_label.T)
+#
+# with laspy.open('/wspace/disk01/lidar/classification_pts/torch-points3d/data/dales/raw/5080_54400.las') as f:
+#     print(f"Point format:       {f.header.point_format}")
+#     print(f"Number of points:   {f.header.point_count}")
+#     print(f"Number of vlrs:     {len(f.header.vlrs)}")
+#
 
 
 # import os
