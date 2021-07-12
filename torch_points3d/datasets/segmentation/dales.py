@@ -222,6 +222,10 @@ class Dales(InMemoryDataset):
 
 ### Test gridspheresampling without fonction
 
+        #Creating the sampler for each set
+        # sampler = GridSphereSampling(radius=15, grid_size=15, delattr_kd_tree=True, center=True)
+        sampler = GridSphereSampling(radius=15, grid_size=20, delattr_kd_tree=True, center=True)
+
         if self._split == "train":
             data_list = []
             for i in train_num:
@@ -236,14 +240,16 @@ class Dales(InMemoryDataset):
                 # y = self._remap_labels(y)
                 data = Data(pos=torch.from_numpy(las_xyz).type(torch.float), y=y)
 
-                sampler = GridSphereSampling(radius=15, grid_size=15, delattr_kd_tree=True, center=True)
+                # Calling sampler
                 data_samples = sampler(data.clone()) # create a whole list of samples
 
                 # print(f"this is data {data}")
                 # print(f"this is sampler {data_sample}")
 
+                # Removing samples with length zero
                 for sample in data_samples:
-                    data_list.append(sample)
+                    if len(sample.y) > 0:
+                        data_list.append(sample)
 
                 log.info("Processed file %s, nb points = %i, nb samples = %i", i, data.pos.shape[0], len(data_samples))
 
@@ -266,17 +272,18 @@ class Dales(InMemoryDataset):
                 # y = self._remap_labels(y)
                 data = Data(pos=torch.from_numpy(las_xyz).type(torch.float), y=y)
 
-                sampler = GridSphereSampling(radius=15, grid_size=15, delattr_kd_tree=True, center=True)
+                # Calling sampler
                 data_samples = sampler(data.clone()) # Creates a whole list of samples
 
                 # print(f"this is data {data}")
                 # print(f"this is sampler {data_sample}")
 
+                # Removing samples with length zero
                 for sample in data_samples:
-                    data_list.append(sample)
+                    if len(sample.y) > 0:
+                        data_list.append(sample)
 
-
-                log.info("Processed file %s, nb points = %i", i, data.pos.shape[0])
+                log.info("Processed file %s, nb points = %i, nb samples = %i", i, data.pos.shape[0], len(data_samples))
 
             #print(data_list)
 

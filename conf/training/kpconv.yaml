@@ -3,7 +3,7 @@
 epochs: 5
 num_workers: 7
 #batch_size: 4
-batch_size: 1
+batch_size: 8
 cuda: 0
 #precompute_multi_scale: True # Compute multiscate features on cpu for faster training / inference
 precompute_multi_scale: False
@@ -40,4 +40,4 @@ wandb:
 
 # parameters for TensorBoard Visualization
 tensorboard:
-  log: False
+  log: True
