@@ -1,6 +1,6 @@
 import torch
 import numpy as np
-from torch.utils.data import Sampler
+from torch.utils.data import Sampler, RandomSampler
 
 class BalancedRandomSampler(Sampler):
     r"""This sampler is responsible for creating balanced batch based on the class distribution.
@@ -28,4 +28,5 @@ class BalancedRandomSampler(Sampler):
 
     def __repr__(self):
         return "{}(num_samples={})".format(self.__class__.__name__, self.num_samples)
+
 

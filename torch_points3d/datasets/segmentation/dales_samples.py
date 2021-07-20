@@ -26,60 +26,11 @@ log = logging.getLogger(__name__)
 
 ################################### Utils ###################################
 
-def create_subsamples(data):
-    '''
-    This fonction was created to facilitate multiprocessing integration. It might be faster/better to multiprocess at the
-    subsampliong level only. This would mean that the first part of this fonction would be called in an iteration from
-    the appropritate process section wich would call the subsampling fonction as a multiprocess process...
-
-    :param las_image:
-    :return:
-    '''
-    #
-    # las_data_list = []
-    # las_file = laspy.read(os.path.join(dataroot, set_val, "{}.las".format(las_image)))
-    #
-    # las_file_path = os.path.join(dataroot, set_val, "{}.las".format(las_image))
-    #
-    # #print(f"this is las file path {las_file_path}") #debug
-    #
-    # las_xyz = np.stack([las_file.x, las_file.y, las_file.z], axis=1)
-    #
-    # las_label = np.array(las_file.classification).astype(np.int)
-    # # print(las_xyz)
-    # y = torch.from_numpy(las_label)
-    # # y = self._remap_labels(y)
-    # data = Data(pos=torch.from_numpy(las_xyz).type(torch.float), y=y)
-
-    sampler = GridSphereSampling(radius=15, grid_size=15, delattr_kd_tree=True, center=True)
-    data_sample = sampler(data.clone())
-
-    return data_sample
-
-    # print(data_sample)
-
-    #print(data) #debug
-    #
-    # Subsampling
-    # for sample_no in range(100):
-    #     sampler = GridSphereSampling(radius=15, grid_size=15, delattr_kd_tree=True, center=True)
-    #     data_sample = sampler(data.clone())
-    #
-    #     print(data_sample)
-    #
-    #     log.info("Processed file %s, sample_no = %s nb points = %i", las_image, sample_no, data.pos.shape[0])
-    #     print(f"Processed file {las_image}, sample_no = {sample_no} nb points = {data.pos.shape[0]}")
-    #
-    #     las_data_list.append(data_sample)
-    #
-    # return las_data_list
 
 ################################### Initial variables and paths ###################################
 
 DIR = os.path.dirname(os.path.realpath(__file__))
 dataroot = os.path.join(DIR, "..", "..", "..", "data", "dales", "raw")
-
-# path = "/wspace/disk01/lidar/classification_pts/torch-points3d/data/dales/raw"  # à remplacer avec chemmin hydra ou points3D
 
 train_list = [f for f in os.listdir(os.path.join(dataroot, "train")) if
             f.endswith('.las')]  # liste des fichiers avec extension .las
@@ -114,32 +65,26 @@ class Dales(InMemoryDataset):
     Class to handle DALES dataset for segmentation task.
     """
 
-    def __init__(self, root, split=None, transform=None, pre_transform=None, pre_filter=None):
+    def __init__(self, root,  sample_per_epoch=10000, radius=15, grid_size_d=15, split=None, transform=None,
+                 pre_transform=None, pre_filter=None):
 
         self._split = split
+        self._sample_per_epoch = sample_per_epoch
+        self._radius = radius
+        self._grid = grid_size_d
 
         super().__init__(root, transform=transform, pre_transform=pre_transform, pre_filter=pre_filter)
 
         # Processed path : a mieux expliquer pour final -> doit pointer vert les dossier "processed"
         # les processed path sont probablement créé par la section "processed file names" qui retourne actuellement train.pt et test.pt
 
-        # # Load the appropriate .pt file according to the wrapper class argument (DalesDataset())
-        # if split == "train":
-        #     self.data, self.slices = torch.load(self.processed_paths[0])
-        # elif split == "test":
-        #     self.data, self.slices = torch.load(self.processed_paths[1])
-        # else:
-        #     raise ValueError("Split %s not recognised" % split)
-
         # Load the appropriate .pt file according to the wrapper class argument (DalesDataset())
         if split == "train":
-            path = self.processed_paths[0]
+            self.data, self.slices = torch.load(self.processed_paths[0])
         elif split == "test":
-            path = self.processed_paths[1]
+            self.data, self.slices = torch.load(self.processed_paths[1])
         else:
             raise ValueError("Split %s not recognised" % split)
-
-        self._load_data(path)
 
     @property
     def raw_file_names(self):
@@ -185,58 +130,6 @@ class Dales(InMemoryDataset):
 
         """
 
-###### NORMAL LOADING FOR EACH LAS BELOW
-        # if self._split == "train":
-        #     data_list = []
-        #     for i in train_num:
-        #         las_file = laspy.read(os.path.join(dataroot, "train", "{}.las".format(i)))
-        #         # print(las_file)
-        #
-        #         las_xyz = np.stack([las_file.x, las_file.y, las_file.z], axis=1)
-        #
-        #         las_label = np.array(las_file.classification).astype(np.int)
-        #         # print(las_xyz)
-        #         y = torch.from_numpy(las_label)
-        #         # y = self._remap_labels(y)
-        #         data = Data(pos=torch.from_numpy(las_xyz).type(torch.float), y=y)
-        #
-        #         log.info("Processed file %s, nb points = %i", i, data.pos.shape[0])
-        #
-        #         data_list.append(data)
-        #
-        #     data, slices = self.collate(data_list)
-        #     torch.save((data, slices), self.processed_paths[0])
-        #
-        # elif self._split == "test":
-        #     data_list = []
-        #     for i in test_num:
-        #         las_file = laspy.read(os.path.join(dataroot, "test", "{}.las".format(i)))
-        #         # print(las_file)
-        #
-        #         las_xyz = np.stack([las_file.x, las_file.y, las_file.z], axis=1)
-        #
-        #         las_label = np.array(las_file.classification).astype(np.int)
-        #         # print(las_xyz)
-        #         y = torch.from_numpy(las_label)
-        #         # y = self._remap_labels(y)
-        #         data = Data(pos=torch.from_numpy(las_xyz).type(torch.float), y=y)
-        #
-        #         log.info("Processed file %s, nb points = %i", i, data.pos.shape[0])
-        #
-        #         data_list.append(data)
-        #
-        #     data, slices = self.collate(data_list)
-        #     torch.save((data, slices), self.processed_paths[1])
-        #
-        # else:
-        #     raise ValueError("Split %s not recognised" % split)
-
-### Test gridspheresampling without fonction
-
-        #Creating the sampler for each set
-        # sampler = GridSphereSampling(radius=15, grid_size=15, delattr_kd_tree=True, center=True)
-        #my_sampler = GridSphereSampling(radius=15, grid_size=20, delattr_kd_tree=True, center=True)
-
         if self._split == "train":
             data_list = []
             for i in train_num:
@@ -252,9 +145,9 @@ class Dales(InMemoryDataset):
                 data = Data(pos=torch.from_numpy(las_xyz).type(torch.float), y=y)
 
                 # Calling sampler
-                my_sampler = GridSphereSampling(radius=15, grid_size=15, delattr_kd_tree=True, center=True)
-                data_samples = my_sampler(data.clone()) # create a whole list of samples
-                #data_samples = sampler(data) # create a whole list of samples
+                my_sampler = GridSphereSampling(radius=15, grid_size=20, delattr_kd_tree=True, center=True)
+                data_samples = my_sampler(data.clone())  # create a whole list of samples
+                # data_samples = sampler(data) # create a whole list of samples
 
                 # print(f"this is data {data}")
                 # print(f"this is sampler {data_sample}")
@@ -264,13 +157,13 @@ class Dales(InMemoryDataset):
                     if len(my_sample.y) > 0:
                         data_list.append(my_sample)
 
-                log.info("Processed file %s, nb points = %i, nb samples = %i", i, data.pos.shape[0], len(data_samples))
+                log.info("Processed file %s, nb points = %i, nb samples = %i", i, data.pos.shape[0],
+                         len(data_samples))
 
-            #print(data_list)
+            # print(data_list)
 
-            #data, slices = self.collate(data_list)
-            #torch.save((data, slices), self.processed_paths[0])
-            self._save_data(data_list, self.processed_paths[0])
+            data, slices = self.collate(data_list)
+            torch.save((data, slices), self.processed_paths[0])
 
         elif self._split == "test":
             data_list = []
@@ -287,9 +180,9 @@ class Dales(InMemoryDataset):
                 data = Data(pos=torch.from_numpy(las_xyz).type(torch.float), y=y)
 
                 # Calling sampler
-                my_sampler = GridSphereSampling(radius=15, grid_size=15, delattr_kd_tree=True, center=True)
-                data_samples = my_sampler(data.clone()) # Creates a whole list of samples
-                #data_samples = sampler(data)  # Creates a whole list of samples
+                my_sampler = GridSphereSampling(radius=15, grid_size=20, delattr_kd_tree=True, center=True)
+                data_samples = my_sampler(data.clone())  # Creates a whole list of samples
+                # data_samples = sampler(data)  # Creates a whole list of samples
 
                 # print(f"this is data {data}")
                 # print(f"this is sampler {data_sample}")
@@ -299,13 +192,13 @@ class Dales(InMemoryDataset):
                     if len(my_sample.y) > 0:
                         data_list.append(my_sample)
 
-                log.info("Processed file %s, nb points = %i, nb samples = %i", i, data.pos.shape[0], len(data_samples))
+                log.info("Processed file %s, nb points = %i, nb samples = %i", i, data.pos.shape[0],
+                         len(data_samples))
 
-            #print(data_list)
+            # print(data_list)
 
-            self._save_data(data_list, self.processed_paths[1])
-            #data, slices = self.collate(data_list)
-            #torch.save((data, slices), self.processed_paths[1])
+            data, slices = self.collate(data_list)
+            torch.save((data, slices), self.processed_paths[1])
 
         else:
             raise ValueError("Split %s not recognised" % split)
@@ -314,59 +207,88 @@ class Dales(InMemoryDataset):
     def num_classes(self):
         return 9
 
-    def _save_data(self, data_list, pp_path):
-        data, slices = self.collate(data_list)
-        torch.save((data, slices), pp_path)
 
-    def _load_data(self, path):
-        self.data, self.slices = torch.load(path)
-
-class DalesSampled(Dales):
+### Dataset pour sampling
+class DalesSphere(Dales):
     """
     Class to handle DALES dataset for segmentation task.
     """
 
-    # Actually, radius and grid_size_d are not used for the moment
-    def __init__(self, root, sample_per_epoch=None, radius=None, grid_size_d=None, split=None, transform=None,
-                 pre_transform=None, pre_filter=None):
+    """ Wrapper around Dales that creates train and test datasets.
+    Parameters
+    ----------
+    dataset_opt: omegaconf.DictConfig
+        Config dictionary that should contain
+            - root,
+            - transform,
+            - pre_transform
+            - process_workers
+    """
 
-        self._split = split
-        self._sample_per_epoch = sample_per_epoch
+    def __init__(self, root, sample_per_epoch=10000, radius=15, grid_size_d=15, *args, **kwargs):
+        self._samples_per_epoch = sample_per_epoch
         self._radius = radius
         self._grid = grid_size_d
 
-        super().__init__(root, split=split, transform=transform, pre_transform=pre_transform, pre_filter=pre_filter)
-        #super().__init__(root, *args, **kwargs)
+        super().__init__(root, *args, **kwargs)
 
+        self.train_dataset = Dales(
+            self._data_path,
+            split="train",
+            transform=self.train_transform,
+            pre_transform=self.pre_transform,
+        )
+
+        self.test_dataset = Dales(
+            self._data_path,
+            split="test",
+            transform=self.test_transform,
+            pre_transform=self.pre_transform,
+        )
 
     def __len__(self):
-        if self._sample_per_epoch > 0:
-            return self._sample_per_epoch
+        if self._samples_per_epoch > 0:
+            return self._samples_per_epoch
         else:
-            return len(self._datas)
-        #return len(self._datas)
+            return len(self._test_spheres)
 
     def get(self, idx):
-        random_idx = random.randint(0, len(self._datas)-1)
-        #print(random_idx)
-#print(self._datas[random_idx])
-        return self._datas[random_idx].clone()
-
-    # def __get__(self, idx):
-    #     return self.data[idx], self.slices[idx]
+        if super()._split == "train":
+            if self._sample_per_epoch > 0:
+                return self._get_random(self.train_dataset)
+            else:
+                return self.train_dataset[idx].clone()
+        elif super()._split == "test":
+            if self._sample_per_epoch > 0:
+                return self._get_random(self.test_dataset)
+            else:
+                return self.test_dataset[idx].clone()
+        else:
+            print("Nothing worked, we are doomed")
 
     def process(self):  # We have to include this method, otherwise the parent class skips processing
         super().process()
 
-    def download(self):  # We have to include this method, otherwise the parent class skips download
+    def download(self):  # We have to include this method, otherwise the parent class skips processing
         super().download()
 
-    def _save_data(self, data_list, pp_path):
-        #data, slices = self.collate(data_list)
-        torch.save((data_list), pp_path)
+    def _get_random(self, random_split):
+        # Random spheres biased towards getting more low frequency classes
+        # gridsphere_sampler = cT.SphereSampling(self._radius, centre[:3], align_origin=False)
+        my_gridsampler = GridSphereSampling(radius=self._radius, grid_size=self._grid, delattr_kd_tree=True,
+                                            center=True)
+        return my_gridsampler(random_split)
 
-    def _load_data(self, path):
-        self._datas = torch.load(path)
+    def get_tracker(self, wandb_log: bool, tensorboard_log: bool):
+        """Factory method for the tracker
+        Arguments:
+            wandb_log - Log using weight and biases
+            tensorboard_log - Log using tensorboard
+        Returns:
+            [BaseTracker] -- tracker
+        """
+        return SegmentationTracker(self, wandb_log=wandb_log, use_tensorboard=tensorboard_log)
+
 
 class DalesDataset(BaseDataset):
     """ Wrapper around Dales that creates train and test datasets.
@@ -400,51 +322,6 @@ class DalesDataset(BaseDataset):
         self.test_dataset = Dales(
             self._data_path,
             split="test",
-            transform=self.test_transform,
-            pre_transform=self.pre_transform,
-        )
-
-    def get_tracker(self, wandb_log: bool, tensorboard_log: bool):
-        """Factory method for the tracker
-        Arguments:
-            wandb_log - Log using weight and biases
-            tensorboard_log - Log using tensorboard
-        Returns:
-            [BaseTracker] -- tracker
-        """
-        return SegmentationTracker(self, wandb_log=wandb_log, use_tensorboard=tensorboard_log)
-
-class DalesSphere(BaseDataset):
-    """ Wrapper around Dales that creates train and test datasets.
-    Parameters
-    ----------
-    dataset_opt: omegaconf.DictConfig
-        Config dictionary that should contain
-            - root,
-            - transform,
-            - pre_transform
-            - process_workers
-    """
-
-    def __init__(self, dataset_opt):
-        super().__init__(dataset_opt)
-
-        self.train_dataset = DalesSampled(
-            self._data_path,
-            split="train",
-            sample_per_epoch=10000, #-1 for all
-            radius=15,
-            grid_size_d=15,
-            transform=self.train_transform,
-            pre_transform=self.pre_transform,
-        )
-
-        self.test_dataset = DalesSampled(
-            self._data_path,
-            split="test",
-            sample_per_epoch=2000, #-1 for all
-            radius=15,
-            grid_size_d=15,
             transform=self.test_transform,
             pre_transform=self.pre_transform,
         )
