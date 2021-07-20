@@ -120,18 +120,6 @@ class Dales(InMemoryDataset):
 
         super().__init__(root, transform=transform, pre_transform=pre_transform, pre_filter=pre_filter)
 
-        # Processed path : a mieux expliquer pour final -> doit pointer vert les dossier "processed"
-        # les processed path sont probablement créé par la section "processed file names" qui retourne actuellement train.pt et test.pt
-
-        # # Load the appropriate .pt file according to the wrapper class argument (DalesDataset())
-        # if split == "train":
-        #     self.data, self.slices = torch.load(self.processed_paths[0])
-        # elif split == "test":
-        #     self.data, self.slices = torch.load(self.processed_paths[1])
-        # else:
-        #     raise ValueError("Split %s not recognised" % split)
-
-        # Load the appropriate .pt file according to the wrapper class argument (DalesDataset())
         if split == "train":
             path = self.processed_paths[0]
         elif split == "test":
