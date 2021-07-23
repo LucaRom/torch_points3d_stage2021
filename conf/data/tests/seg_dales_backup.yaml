@@ -1,22 +1,25 @@
 # @package data
 task: segmentation
-#class: dales.DalesDataset
-class: dales.DalesSphere
+class: dales.DalesDataset
 dataset_name: "dales"
 dataroot: data
-#first_subsampling: 0.02
-first_subsampling : 10 # Very correlated with memory used. Need to verify if linked to this : https://github.com/HuguesTHOMAS/KPConv/issues/135#issuecomment-771032535
+first_subsampling: 0.02
+#first_subsampling: 10
 use_category: False
 
 #pre_transform:
-#  - transform: GridSphereSampling
+#  - transform: RandomSphere
 #    params:
-#      radius: 15
-#      grid_size: 15
-#      delattr_kd_tree: True
+#      radius: 2
+#      strategy: random
 #      center: True
 
 train_transform:
+#  - transform: RandomSphere
+#    params:
+#      radius: 2
+#      strategy: random
+#      center: True
   - transform: AddOnes
   - transform: AddFeatByKey
     params:
@@ -25,6 +28,11 @@ train_transform:
   - transform: XYZFeature
 
 test_transform:
+#  - transform: RandomSphere
+#    params:
+#      radius: 2
+#      strategy: random
+#      center: True
   - transform: AddOnes
   - transform: AddFeatByKey
     params:

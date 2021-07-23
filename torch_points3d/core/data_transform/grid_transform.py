@@ -57,6 +57,8 @@ def group_data(data, cluster=None, unique_pos_indices=None, mode="last", skip_ke
 
     num_nodes = data.num_nodes
     for key, item in data:
+        #print(data.batch.device.type) #debug_LR
+        #print(data) #debug_LR
         if bool(re.search("edge", key)):
             raise ValueError("Edges not supported. Wrong data type.")
         if key in skip_keys:
