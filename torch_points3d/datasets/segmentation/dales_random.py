@@ -24,6 +24,9 @@ log = logging.getLogger(__name__)
 # reference for dales dataset : https://arxiv.org/abs/2004.11985
 # The dataset must be downloaded at go.udayton.edu/dales3d.
 
+################################### Utils ###################################
+
+
 ################################### Initial variables and paths ###################################
 
 
@@ -32,50 +35,35 @@ DIR = os.path.dirname(os.path.realpath(__file__))
 # Calling dataset conf file to use extra parameters
 # This is a quick workaroud to pass argument from the config file and could/should be recoded so it is passed from
 # the class
+dales_confpath = os.path.join(DIR, "..", "..", "..", "conf", "data", "segmentation", "dales.yaml")
+dales_cfg = omegaconf.OmegaConf.load(dales_confpath)
 
-output_dir = os.getcwd()
-config_path = os.path.join(output_dir, ".hydra/config.yaml")
-config_cfg = omegaconf.OmegaConf.load(config_path)
-#config_data = config_cfg.data
 
-# Below works if only one set of config files is run (direct path). Overrided config file is prefer for simultaneous
-# runs (ie, 1 on each gpus).
-#dales_confpath = os.path.join(DIR, "..", "..", "..", "conf", "data", "segmentation", "{}.yaml".format(config_data))
-#dales_cfg = omegaconf.OmegaConf.load(dales_confpath)
-
-if config_cfg.data.raw_folder_param == "small":
+if dales_cfg.raw_folder_param == "small":
     dir_raw = "raw"
-    k_num = 1
 else:
     dir_raw = "raw (full)"
-    k_num = 4
 
 dataroot = os.path.join(DIR, "..", "..", "..", "data", "dales", dir_raw)
 
-# List all .las file in train and test folders to create raw datasets
-# Extension is removed in <dataset_name>_num
-# Training files are split to create the validation list
-train_val_list = [f for f in os.listdir(os.path.join(dataroot, "train")) if f.endswith('.las')]
-train_val_num = [os.path.splitext(x)[0] for x in train_val_list]
+print(f"this is my dataroot {dataroot}")
+# path = "/wspace/disk01/lidar/classification_pts/torch-points3d/data/dales/raw"  # à remplacer avec chemmin hydra ou points3D
 
-# Split data for validation (4 out of 40)
-val_list = random.choices(train_val_list, k=k_num)
-val_num = [os.path.splitext(x)[0] for x in val_list]
+train_list = [f for f in os.listdir(os.path.join(dataroot, "train")) if
+            f.endswith('.las')]  # liste des fichiers avec extension .las
+train_num = [os.path.splitext(x)[0] for x in train_list]  # liste des fichiers sans extension
 
-# Train list
-train_list = [f for f in train_val_list if f not in val_list] # Substract val_list from train_val_list
-train_num = [os.path.splitext(x)[0] for x in train_list]
+#val_list = [f for f in os.listdir(os.path.join(dataroot, "val")) if
+#             f.endswith('.las')]  # liste des fichiers avec extension .las
+#val_num = [os.path.splitext(x)[0] for x in val_list]  # liste des fichiers sans extension
 
-# Test list
-test_list = [f for f in os.listdir(os.path.join(dataroot, "test")) if f.endswith('.las')]
+test_list = [f for f in os.listdir(os.path.join(dataroot, "test")) if
+            f.endswith('.las')]  # liste des fichiers avec extension .las
 test_num = [os.path.splitext(x)[0] for x in test_list]  # liste des fichiers sans extension
 
-print(f"this is train list {train_list} with {len(train_list)} .las files")
-print(f"this is val list {val_list} with {len(val_list)} .las files")
-print(f"this is test list {test_list} with {len(test_list)} .las files")
-
-# Full .las list (used in "raw_file_names" method
-las_list = train_val_list + test_list
+#las_list = train_list + val_list + test_list
+las_list = train_list + test_list
+#print(f"this is las list : {las_list}")
 
 # Dict from labels to names
 dales_class_names = {0: 'unknown',
@@ -88,10 +76,15 @@ dales_class_names = {0: 'unknown',
                      7: 'Poles',
                      8: 'Buildings'}
 
-# Number of classes for dales dataset
 dales_num_classes = len(dales_class_names)
 
-################################### Utils ###################################
+# print(newcfg)
+# print("is this myu life?")
+
+# print(dales_num_names)
+
+#print(f"from data yaml {grid_test}, {radius_test}, {processed_name_custom}")
+
 
 def random_samples(data, i):
     print(f"picking sample number {i}")
@@ -117,8 +110,8 @@ class Dales(InMemoryDataset):
 
         log.info(f"Actual split is {self._split}")
         log.info(f"GridSphere sampling parameters : Radius = {self._radius}, Grid = {self._grid_size_d}")
-        log.info(f"Parameter first_subsampling is set to : {config_cfg.data.first_subsampling}")
-        log.info(f"Number of processed files (train + test): {len(las_list)} using file from {config_cfg.data.processed_folder_name}")
+        log.info(f"Parameter first_subsampling is set to : {dales_cfg.first_subsampling}")
+        log.info(f"Number of processed files (train + test): {len(las_list)} using file from {dales_cfg.processed_folder_name}")
 
         super().__init__(root, transform=transform, pre_transform=pre_transform, pre_filter=pre_filter)
 
@@ -152,7 +145,7 @@ class Dales(InMemoryDataset):
         Inherited from Dataset class in dataset.py
         Set the name of the processed_ba files folder
         """
-        return osp.join(self.root, config_cfg.data.processed_folder_name)
+        return osp.join(self.root, dales_cfg.processed_folder_name)
 
     @property
     def raw_file_names(self):
@@ -168,7 +161,7 @@ class Dales(InMemoryDataset):
         Ici on définit le nom des fichier processed_ba qui deviendront les "processed_paths" appelé plus haut
 
         """
-        #return ['train.pt', 'test.pt']
+        #return ['train.pt', 'val.pt', 'test.pt']
         return ['train.pt', 'val.pt', 'test.pt'] #val.pt is not neeeded since we use test dataset for it
 
     def download(self):
@@ -201,7 +194,7 @@ class Dales(InMemoryDataset):
         #Creating the sampler for each set
         my_sampler = GridSphereSampling(radius=self._radius, grid_size=self._grid_size_d, delattr_kd_tree=True,
                                         center=False)
-        #my_second_sampler = RandomSphere(radius=10, strategy="freq_class_based")
+        my_second_sampler = RandomSphere(radius=10, strategy="freq_class_based")
 
         # Check if the processed file already exist for this split, if not, proceed with the processing
         if self._split == "train":
@@ -209,8 +202,8 @@ class Dales(InMemoryDataset):
                 print(f"Processed file for {self._split} already exists, skipping processing")
             else:
                 data_list = []
-                for i in train_num:
-                    las_file = laspy.read(os.path.join(dataroot, "train", "{}.las".format(i)))
+                for idx, filenum in enumerate(train_num, 1):
+                    las_file = laspy.read(os.path.join(dataroot, "train", "{}.las".format(filenum)))
                     # print(las_file)
 
                     las_xyz = np.stack([las_file.x, las_file.y, las_file.z], axis=1)
@@ -221,13 +214,37 @@ class Dales(InMemoryDataset):
                     # y = self._remap_labels(y)
                     data = Data(pos=torch.from_numpy(las_xyz).type(torch.float), y=y)
 
-                    log.info("Processed file %s, nb points = %i", i, data.pos.shape[0])
+                    total_sample_needed = 10000
+                    need_per_i = int(total_sample_needed/len(train_num))
 
-                    data_list.append(data)
+                    # def random_samples():
+                    #     my_samples_sample = my_second_sampler(data)
+                    #     if len(my_samples_sample.y) > 1000:
+                    #         return my_samples_sample
+                    #         #data_list.append(my_samples_sample)
 
-                # data, slices = self.collate(data_list)
-                # torch.save((data, slices), self.processed_paths[0])
-                torch.save((data_list), self.processed_paths[0])
+                    while len(data_list) < int(need_per_i*idx):
+                        my_samples_sample = my_second_sampler(data)
+                        if len(my_samples_sample.y) > 1000:
+                            data_list.append(my_samples_sample)
+                        #print(len(data_list))
+
+                    # print(f"this is data {data}")
+                    # print(f"this is sampler {data_sample}")
+
+                    #Removing samples with length zero
+                    # for my_sample in data_samples:
+                    #     if len(my_sample.y) > 1000:
+                    #         data_list.append(my_sample)
+
+                    #log.info("Processed file %s, nb points = %i, nb samples = %i", i, data.pos.shape[0], len(data_samples))
+                    log.info("Processed file %s, nb points = %i", filenum, data.pos.shape[0])
+
+                #print(data_list)
+
+                #data, slices = self.collate(data_list)
+                #torch.save((data, slices), self.processed_paths[0])
+                self._save_data(data_list, self.processed_paths[0])
 
         # Check if the processed file already exist for this split, if not, proceed with the processing
         elif self._split == "val":
@@ -235,58 +252,56 @@ class Dales(InMemoryDataset):
                 print(f"Processed file for {self._split} already exists, skipping processing")
             else:
                 data_list = []
-                for i in val_num:
-                    las_file = laspy.read(os.path.join(dataroot, "train", "{}.las".format(i)))
+                for idx, filenum in enumerate(test_num, 1):
+                    las_file = laspy.read(os.path.join(dataroot, "test", "{}.las".format(filenum)))
                     # print(las_file)
 
                     las_xyz = np.stack([las_file.x, las_file.y, las_file.z], axis=1)
 
                     las_label = np.array(las_file.classification).astype(np.int)
-                    # print(las_xyz)
                     y = torch.from_numpy(las_label)
-                    # y = self._remap_labels(y)
                     data = Data(pos=torch.from_numpy(las_xyz).type(torch.float), y=y)
 
-                    log.info("Processed file %s, nb points = %i", i, data.pos.shape[0])
+                    total_sample_needed = 2000
+                    need_per_i = int(total_sample_needed/len(train_num))
 
-                    data_list.append(data)
+                    # def random_samples():
+                    #     my_samples_sample = my_second_sampler(data)
+                    #     if len(my_samples_sample.y) > 1000:
+                    #         return my_samples_sample
+                    #         #data_list.append(my_samples_sample)
 
-                # data, slices = self.collate(data_list)
-                # torch.save((data, slices), self.processed_paths[1])
+                    while len(data_list) < int(need_per_i*idx):
+                        my_samples_sample = my_second_sampler(data)
+                        if len(my_samples_sample.y) > 1000:
+                            data_list.append(my_samples_sample)
+                        #print(len(data_list))
+
+                    # log.info("Processed file %s, nb points = %i, nb samples = %i", i, data.pos.shape[0], len(data_samples))
+                    log.info("Processed file %s, nb points = %i", filenum, data.pos.shape[0])
+
                 self._save_data(data_list, self.processed_paths[1])
 
+        # Not necessary to skip the last split, since whole method is skipped is all files (processed_paths) exist
         elif self._split == "test":
-            if os.path.exists(self.processed_paths[2]):
-                print(f"Processed file for {self._split} already exists, skipping processing")
-            else:
-                data_list = []
-                for i in test_num:
-                    las_file = laspy.read(os.path.join(dataroot, "test", "{}.las".format(i)))
-                    # print(las_file)
+            data_list = []
+            for i in test_num:
+                las_file = laspy.read(os.path.join(dataroot, "test", "{}.las".format(i)))
+                # print(las_file)
 
-                    las_xyz = np.stack([las_file.x, las_file.y, las_file.z], axis=1)
+                las_xyz = np.stack([las_file.x, las_file.y, las_file.z], axis=1)
 
-                    las_label = np.array(las_file.classification).astype(np.int)
-                    y = torch.from_numpy(las_label)
-                    data = Data(pos=torch.from_numpy(las_xyz).type(torch.float), y=y)
+                las_label = np.array(las_file.classification).astype(np.int)
+                y = torch.from_numpy(las_label)
+                data = Data(pos=torch.from_numpy(las_xyz).type(torch.float), y=y)
 
-                    data_samples = my_sampler(data.clone())  # Creates a whole list of samples
-                    # data_samples = sampler(data)  # Creates a whole list of samples
+                data_list.append(data)
 
-                    # print(f"this is data {data}")
-                    # print(f"this is sampler {data_sample}")
+                #log.info("Processed file %s, nb points = %i, nb samples = %i", i, data.pos.shape[0], len(data_samples))
+                log.info("Processed file %s, nb points = %i", i, data.pos.shape[0])
 
-                    # Removing samples with length zero
-                    for my_sample in data_samples:
-                        if len(my_sample.y) > 0:
-                            data_list.append(my_sample)
 
-                    #data_list.append(data)
-
-                    #log.info("Processed file %s, nb points = %i, nb samples = %i", i, data.pos.shape[0], len(data_samples))
-                    log.info("Processed file %s, nb points = %i, nb samples = %i", i, data.pos.shape[0], len(data_samples))
-
-                self._save_data(data_list, self.processed_paths[2])
+            self._save_data(data_list, self.processed_paths[2])
 
         else:
             raise ValueError("Split %s not recognised" % split)
@@ -321,19 +336,28 @@ class DalesSampled(Dales):
         #super().__init__(root, *args, **kwargs)
 
     def __len__(self):
-        if self._sample_per_epoch > 0:
-            return self._sample_per_epoch
-        else:
-            return len(self._datas)
-        #return len(self._datas)
+        # if self._sample_per_epoch > 0:
+        #     return self._sample_per_epoch
+        # else:
+        #     return len(self._datas)
+        return len(self._datas)
 
     def get(self, idx):
-        my_second_sampler = RandomSphere(radius=10, strategy="freq_class_based")
-        if self._split == "test":
-            return self._datas[idx].clone()
-        else:
-            my_samples_sample = random.choice(my_second_sampler(self._datas))
-            return my_samples_sample
+
+        #my_new_sampler = RandomSphere(radius=15, strategy="freq_class_based")
+
+        #my_random_data = my_new_sampler(self._datas)
+        #print(my_random_data)
+
+        #random_idx = random.randint(0, len(self._datas)-1)
+
+        #print(random_idx)
+        #print(self._datas[random_idx])
+        return self._datas[idx].clone()
+        #return my_random_data
+
+    # def __get__(self, idx):
+    #     return self.data23[idx], self.slices[idx]
 
     def process(self):  # We have to include this method, otherwise the parent class skips processing
         super().process()
@@ -409,14 +433,14 @@ class DalesSphere(BaseDataset):
     def __init__(self, dataset_opt):
         super().__init__(dataset_opt)
 
-        #my_new_sampler = RandomSphere(radius=15, strategy="freq_class_based")  ##NEW
+        my_new_sampler = RandomSphere(radius=15, strategy="freq_class_based")  ##NEW
 
         self.train_dataset = DalesSampled(
             self._data_path,
             split="train",
-            sample_per_epoch=1000, #-1 for all
-            radius=config_cfg.data.radius_param,
-            grid_size_d=config_cfg.data.grid_param,
+            sample_per_epoch=200, #-1 for all
+            radius=dales_cfg.radius_param,
+            grid_size_d=dales_cfg.grid_param,
             transform=self.train_transform,
             pre_transform=self.pre_transform,
         )
@@ -425,8 +449,8 @@ class DalesSphere(BaseDataset):
             self._data_path,
             split="val",
             sample_per_epoch=200, #-1 for all
-            radius=config_cfg.data.radius_param,
-            grid_size_d=config_cfg.data.grid_param,
+            radius=dales_cfg.radius_param,
+            grid_size_d=dales_cfg.grid_param,
             transform=self.val_transform,
             pre_transform=self.pre_transform,
         )
@@ -435,22 +459,11 @@ class DalesSphere(BaseDataset):
             self._data_path,
             split="test",
             sample_per_epoch=-1,  #for all
-            radius=15,
-            grid_size_d=10,
+            radius=dales_cfg.radius_param,
+            grid_size_d=dales_cfg.grid_param,
             transform=self.test_transform,
             pre_transform=self.pre_transform,
         )
-
-    #if epoch is last epoch load this final test
-        # self.final_test_dataset = DalesSampled(
-        #     self._data_path,
-        #     split="test",
-        #     sample_per_epoch=-1,  #for all
-        #     radius=15,
-        #     grid_size_d=15,
-        #     transform=self.test_transform,
-        #     pre_transform=self.pre_transform,
-        # )
 
     def get_tracker(self, wandb_log: bool, tensorboard_log: bool):
         """Factory method for the tracker

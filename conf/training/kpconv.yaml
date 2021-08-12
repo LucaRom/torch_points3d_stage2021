@@ -1,10 +1,10 @@
 # Those arguments defines the training hyper-parameters
 #epochs: 550
-epochs: 50
+epochs: 5
 num_workers: 7
 #batch_size: 4
 batch_size: 8
-shuffle: True
+shuffle: False
 #sampler: BalancedRandomSampler
 cuda: 0
 #precompute_multi_scale: True # Compute multiscate features on cpu for faster training / inference
@@ -33,7 +33,7 @@ checkpoint_dir: ""
 # Those arguments within experiment defines which model, dataset and task to be created for benchmarking
 # parameters for Weights and Biases
 #wandb:
-#  project: s3dis
+#  project: dales
 #  log: True
 #  notes: "Fixed batch norm to 0.02"
 #  name: "kpconv-bn02"

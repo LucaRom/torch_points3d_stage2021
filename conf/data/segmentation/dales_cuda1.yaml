@@ -7,14 +7,14 @@ dataroot: data
 use_category: False     #
 
 #first_subsampling: 0.02
-first_subsampling : 0.1 # Minimum distance between points in the samples fed to KPconv
+first_subsampling : 0.2 # Minimum distance between points in the samples fed to KPconv
                         # Very correlated with memory used. Need to verify if linked to this : https://github.com/HuguesTHOMAS/KPConv/issues/135#issuecomment-771032535
 
 # Additional settings for the GridSampling and processed_ba files
-grid_param: 10
-radius_param: 10
+grid_param: 15
+radius_param: 15
 raw_folder_param: small # Choice between "full" or "small"
-processed_folder_name: processed_${data.raw_folder_param}_${data.grid_param}_${data.radius_param}_01_randomwrapper
+processed_folder_name: processed_${data.raw_folder_param}_${data.grid_param}_${data.radius_param}_02
 
 #pre_transform:
 #  - transform: GridSphereSampling
