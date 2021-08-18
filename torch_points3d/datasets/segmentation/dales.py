@@ -17,6 +17,8 @@ from functools import partial
 from torch_geometric.data import InMemoryDataset, Dataset, Data
 from torch_points3d.datasets.base_dataset import BaseDataset
 from torch_points3d.core.data_transform.transforms import RandomSphere, GridSphereSampling
+from torch_points3d.core.data_transform.grid_transform import GridSampling3D
+from torch_points3d.core.spatial_ops import GridSampler
 from torch_points3d.metrics.segmentation_tracker import SegmentationTracker
 
 log = logging.getLogger(__name__)
@@ -58,12 +60,17 @@ dataroot = os.path.join(DIR, "..", "..", "..", "data", "dales", dir_raw)
 train_val_list = [f for f in os.listdir(os.path.join(dataroot, "train")) if f.endswith('.las')]
 train_val_num = [os.path.splitext(x)[0] for x in train_val_list]
 
-# Split data for validation (4 out of 40)
+# Split data for validation (ex. 4 out of 40 for full dataset)
+k_val = config_cfg.data.num_val_tuiles
+(print(k_num))
 val_list = random.choices(train_val_list, k=k_num)
 val_num = [os.path.splitext(x)[0] for x in val_list]
 
 # Train list
-train_list = [f for f in train_val_list if f not in val_list] # Substract val_list from train_val_list
+k_train = config_cfg.data.num_train_tuiles
+(print(k_train))
+temp_train_list = [f for f in train_val_list if f not in val_list] # Substract val_list from train_val_list
+train_list = random.choices(temp_train_list, k=k_train)
 train_num = [os.path.splitext(x)[0] for x in train_list]
 
 # Test list
@@ -201,6 +208,7 @@ class Dales(InMemoryDataset):
         #Creating the sampler for each set
         my_sampler = GridSphereSampling(radius=self._radius, grid_size=self._grid_size_d, delattr_kd_tree=True,
                                         center=False)
+        my_grid_sampler = GridSampling3D(size=0.1) #sampler to "reduce" dataset only, no sampling
         #my_second_sampler = RandomSphere(radius=10, strategy="freq_class_based")
 
         # Check if the processed file already exist for this split, if not, proceed with the processing
@@ -220,10 +228,13 @@ class Dales(InMemoryDataset):
                     y = torch.from_numpy(las_label)
                     # y = self._remap_labels(y)
                     data = Data(pos=torch.from_numpy(las_xyz).type(torch.float), y=y)
+                    reduced_data = my_grid_sampler(data.clone())
+                    data = Data(pos=reduced_data.pos, y=reduced_data.y)
 
                     log.info("Processed file %s, nb points = %i", i, data.pos.shape[0])
 
-                    data_list.append(data)
+                    #data_list.append(data)
+                    data_list.append(reduced_data)
 
                 # data, slices = self.collate(data_list)
                 # torch.save((data, slices), self.processed_paths[0])
@@ -270,18 +281,21 @@ class Dales(InMemoryDataset):
                     y = torch.from_numpy(las_label)
                     data = Data(pos=torch.from_numpy(las_xyz).type(torch.float), y=y)
 
+                    #data_samples = my_grid_sampler(data.clone())
                     data_samples = my_sampler(data.clone())  # Creates a whole list of samples
                     # data_samples = sampler(data)  # Creates a whole list of samples
 
                     # print(f"this is data {data}")
                     # print(f"this is sampler {data_sample}")
 
+                    # If sampler results in a list, we first remove samples with no points, else we save the whole data
                     # Removing samples with length zero
-                    for my_sample in data_samples:
-                        if len(my_sample.y) > 0:
-                            data_list.append(my_sample)
-
-                    #data_list.append(data)
+                    if isinstance(data_samples, list):
+                        for my_sample in data_samples:
+                            if len(my_sample.y) > 0:
+                                data_list.append(my_sample)
+                    else:
+                        data_list.append(data_samples)
 
                     #log.info("Processed file %s, nb points = %i, nb samples = %i", i, data.pos.shape[0], len(data_samples))
                     log.info("Processed file %s, nb points = %i, nb samples = %i", i, data.pos.shape[0], len(data_samples))
@@ -332,7 +346,11 @@ class DalesSampled(Dales):
         if self._split == "test":
             return self._datas[idx].clone()
         else:
-            my_samples_sample = random.choice(my_second_sampler(self._datas))
+            #my_samples_temp = my_second_sampler(self._datas)
+            my_samples_temp = random.choice(self._datas)
+            #print(my_samples_temp)
+            my_samples_sample = my_second_sampler(my_samples_temp)
+            #print(my_samples_sample)
             return my_samples_sample
 
     def process(self):  # We have to include this method, otherwise the parent class skips processing
@@ -414,7 +432,7 @@ class DalesSphere(BaseDataset):
         self.train_dataset = DalesSampled(
             self._data_path,
             split="train",
-            sample_per_epoch=1000, #-1 for all
+            sample_per_epoch=10000, #-1 for all
             radius=config_cfg.data.radius_param,
             grid_size_d=config_cfg.data.grid_param,
             transform=self.train_transform,
@@ -424,7 +442,7 @@ class DalesSphere(BaseDataset):
         self.val_dataset = DalesSampled(
             self._data_path,
             split="val",
-            sample_per_epoch=200, #-1 for all
+            sample_per_epoch=1000, #-1 for all
             radius=config_cfg.data.radius_param,
             grid_size_d=config_cfg.data.grid_param,
             transform=self.val_transform,
@@ -435,7 +453,7 @@ class DalesSphere(BaseDataset):
             self._data_path,
             split="test",
             sample_per_epoch=-1,  #for all
-            radius=15,
+            radius=10,
             grid_size_d=10,
             transform=self.test_transform,
             pre_transform=self.pre_transform,
