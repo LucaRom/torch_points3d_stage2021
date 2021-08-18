@@ -1,0 +1,52 @@
+# @package data
+task: segmentation
+#class: dales.DalesDataset
+class: stjohns.stjohnsWrapper
+dataset_name: "dales"
+dataroot: data
+use_category: False     #
+
+#first_subsampling: 0.02
+first_subsampling : 0.1 # Minimum distance between points in the samples fed to KPconv
+                        # Very correlated with memory used. Need to verify if linked to this : https://github.com/HuguesTHOMAS/KPConv/issues/135#issuecomment-771032535
+
+# Additional settings for the GridSampling and processed_ba files
+grid_param: 10
+radius_param: 10
+raw_folder_param: full # Choice between "full" or "small"
+processed_folder_name: processed_${data.raw_folder_param}_${data.grid_param}_${data.radius_param}_01_rdm_pretrans
+
+# training parametersfa
+num_train_tuiles: 20
+num_val_tuiles: 4
+
+#pre_transform:
+#  - transform: GridSampling3D       # Samples on a grid
+#    params:
+#        size: ${data.first_subsampling}
+
+train_transform:
+  - transform: AddOnes
+  - transform: AddFeatByKey
+    params:
+      add_to_x: True
+      feat_name: 'ones'
+  - transform: XYZFeature
+
+val_transform:
+  - transform: AddOnes
+  - transform: AddFeatByKey
+    params:
+      add_to_x: True
+      feat_name: 'ones'
+  - transform: XYZFeature
+
+test_transform:
+  - transform: AddOnes
+  - transform: AddFeatByKey
+    params:
+      add_to_x: True
+      feat_name: 'ones'
+  - transform: XYZFeature
+
+
