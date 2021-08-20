@@ -2,7 +2,7 @@
 task: segmentation
 #class: dales.DalesDataset
 class: stjohns.stjohnsWrapper
-dataset_name: "dales"
+dataset_name: "stjohns"
 dataroot: data
 use_category: False     #
 
@@ -13,8 +13,8 @@ first_subsampling : 0.1 # Minimum distance between points in the samples fed to 
 # Additional settings for the GridSampling and processed_ba files
 grid_param: 10
 radius_param: 10
-raw_folder_param: full # Choice between "full" or "small"
-processed_folder_name: processed_${data.raw_folder_param}_${data.grid_param}_${data.radius_param}_01_rdm_pretrans
+#raw_folder_param: full # Choice between "full" or "small"
+#processed_folder_name: processed_${data.raw_folder_param}_${data.grid_param}_${data.radius_param}_01_rdm_pretrans
 
 # training parametersfa
 num_train_tuiles: 20

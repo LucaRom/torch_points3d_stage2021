@@ -7,7 +7,7 @@ import random
 import os.path as osp
 import omegaconf
 
-from torch_geometric.data import InMemoryDataset, Dataset, Data
+from torch_geometric.data import InMemoryDataset, Data
 from torch_points3d.datasets.base_dataset import BaseDataset
 from torch_points3d.core.data_transform.transforms import RandomSphere, GridSphereSampling
 from torch_points3d.core.data_transform.grid_transform import GridSampling3D
@@ -16,11 +16,12 @@ from torch_points3d.metrics.segmentation_tracker import SegmentationTracker
 log = logging.getLogger(__name__)
 
 ################################### Datasets general notes and structure ###################################
+
 """
     The dataset is defided in 3 main class : 
         - stjohns
+        - stjohnsSampling
         - stjohnsWrapper
-        - 
         
     - stjonhs2021 is the main one ... it stores the basic dataset ... etc etc...
     - the second one sampleds the first one as needed
@@ -46,6 +47,8 @@ train_list_small = random.choices(train_list, k=2)
 val_list_small = random.choices(val_list, k=1)
 test_list_small = random.choices(test_list, k=1)
 
+las_list = train_list_small + val_list_small + test_list_small
+
 ################################### Config files integration ###################################
 # Calling overrided conf .yaml file to use extra parameters
 """
@@ -57,17 +60,16 @@ test_list_small = random.choices(test_list, k=1)
             THEREFORE following lines and called parameters/arguments will raise errors if called outside of a run.          
 """
 
-# output_dir = os.getcwd()
-# config_path = os.path.join(output_dir, ".hydra/config.yaml")
-# config_cfg = omegaconf.OmegaConf.load(config_path)
-# #config_data = config_cfg.data
+output_dir = os.getcwd()
+config_path = os.path.join(output_dir, ".hydra/config.yaml")
+config_cfg = omegaconf.OmegaConf.load(config_path)
 
 ################################### Fonctions and Utils ###################################
 
 
 ################################### Memory dataset Main Class ###################################
 
-class stjohns2021(InMemoryDataset):
+class stjohns(InMemoryDataset):
     """
     Class to handle stjohns dataset for segmentation task.
     Most of the methods are inherited from the InMemoryDataset (in_memory_dataset.py) which also inherit methods
@@ -114,7 +116,8 @@ class stjohns2021(InMemoryDataset):
         Set the name of the processed files folder
         Here it is fetched from the config parameter "processed_folder_name" in stjohns.yaml
         """
-        return osp.join(self.root, config_cfg.data.processed_folder_name)
+        #return osp.join(self.root, config_cfg.data.processed_folder_name)
+        return osp.join(self.root, 'processed')
 
     @property
     def raw_file_names(self):
@@ -124,7 +127,7 @@ class stjohns2021(InMemoryDataset):
 
         NOTES : This method is needed for the dataset to work, that's why 'pass' is used.
         """
-        pass
+        return las_list
 
     @property
     def processed_file_names(self):
@@ -164,20 +167,20 @@ class stjohns2021(InMemoryDataset):
             raw_list = train_list_small
         elif self._split == "val":
             pp_paths = self.processed_paths[1]
-            current_split = "train"
+            current_split = "val"
             raw_list = val_list_small
         elif self._split == "test":
             pp_paths = self.processed_paths[2]
-            current_split = "train"
+            current_split = "test"
             raw_list = test_list_small
         else:
             raise ValueError("Split %s not recognised" % self._split)
 
-        self.split_process(self, current_split=current_split, raw_list=raw_list, pp_paths=pp_paths)
+        self.split_process(current_split=current_split, raw_list=raw_list, pp_paths=pp_paths)
 
     @property
     def num_classes(self):
-        return 9
+        return 7
 
     def _save_data(self, data_list, pp_path):
         data, slices = self.collate(data_list)
@@ -187,6 +190,13 @@ class stjohns2021(InMemoryDataset):
         self.data, self.slices = torch.load(path)
 
     def split_process(self, current_split, raw_list, pp_paths):
+        """
+        Method called to process raw data according to the actual split/dataset
+
+        :param current_split: Specifies which dataset is actually processed (train, val or test)
+        :param raw_list: Path to the raw data folder
+        :param pp_paths: Processed path (see processed_file_names())
+        """
         # Samplers used in dataset creation
         # GridSphereSampling fit the point clouds to a grid and samples a sphere around the center point. The radius
         # and grid_size are fed from the dataset conf file.
@@ -195,7 +205,7 @@ class stjohns2021(InMemoryDataset):
 
         # The GridSampling3d resamples the dataset with the center point of a voxel of the set size. This is used to
         # reduce the dataset size
-        _grid_sampler = GridSampling3D(size=0.1)
+        _grid_sampler = GridSampling3D(size=1)
 
         # Check if the processed file already exist for this split, if not, proceed with the processing
         if os.path.exists(pp_paths):
@@ -208,13 +218,14 @@ class stjohns2021(InMemoryDataset):
                 las_xyz = np.stack([las_file.x, las_file.y, las_file.z], axis=1)
                 las_label = np.array(las_file.classification).astype(np.int)
                 y = torch.from_numpy(las_label)
+                y = self._remap_labels(y)
 
                 # Feed extracted data to the Data() class. Data is also resampled for train and val.
                 data = Data(pos=torch.from_numpy(las_xyz).type(torch.float), y=y)
 
-                if current_split == "train" or self._split == "val":
-                    reduced_data = _grid_sampler(data.clone())  # Resampling
-                    data = Data(pos=reduced_data.pos, y=reduced_data.y)
+                if current_split == "train" or current_split == "val":
+                    # reduced_data = _grid_sampler(data)  # Resampling
+                    # data = Data(pos=reduced_data.pos, y=reduced_data.y)
                     data_list.append(data)
 
                     log.info("Processed file %s, nb points = %i", i, data.pos.shape[0])
@@ -238,3 +249,115 @@ class stjohns2021(InMemoryDataset):
             print(f"Saving full data list in {pp_paths}")
             self._save_data(data_list, pp_paths)
             print("Saving done")
+
+class stjohnsSampling(stjohns):
+    """
+    Class that allows the sampling of the stjohns dataset, It uses the stjohns class as the parent
+    class to which we add the __len__ and get() method to handle the dataset.
+
+    The __len__ method specifies then number of samples needed
+    The get() method implements a random sampling strategy that favors underreprented labels
+
+        :param root:
+        :param sample_per_epoch:
+        :param radius: Radius of the sphere that samples the dataset
+        :param grid_size_d: Placeholder if needed for another sampling method
+        :param split: Specifies which dataset is actually processed (train, val or test)
+        :param transform: Carries transform called in the config file
+        :param pre_transform: Carries pre_transform called in the config file
+        :param pre_filter: Carries pre_filter called in the config file
+    """
+
+    # Actually, radius and grid_size_d are not used for the moment in this class
+    def __init__(self, root, sample_per_epoch=None, radius=None, grid_size_d=None, split=None, transform=None,
+                 pre_transform=None, pre_filter=None):
+
+        self._split = split
+        self._sample_per_epoch = sample_per_epoch
+        self._radius = radius
+        self._grid = grid_size_d
+
+        super().__init__(root, split=split, radius=radius, grid_size_d=grid_size_d, transform=transform,
+                         pre_transform=pre_transform, pre_filter=pre_filter)
+
+    def __len__(self):
+        if self._sample_per_epoch > 0:
+            return self._sample_per_epoch
+        else:
+            return len(self._datas)
+
+    def get(self, idx):
+        my_second_sampler = RandomSphere(radius=10, strategy="freq_class_based")
+        if self._split == "test":
+            return self._datas[idx].clone()
+        else:
+            my_samples_temp = random.choice(self._datas)
+            my_samples_sample = my_second_sampler(my_samples_temp)
+            return my_samples_sample
+
+    def process(self):  # We have to include this method, otherwise the parent class skips processing
+        super().process()
+
+    def download(self):  # We have to include this method, otherwise the parent class skips download
+        super().download()
+
+    def _save_data(self, data_list, pp_path):
+        torch.save((data_list), pp_path)
+
+    def _load_data(self, path):
+        self._datas = torch.load(path)
+
+class stjohnsWrapper(BaseDataset):
+    """ Wrapper around Dales that creates train and test datasets.
+    Parameters
+    ----------
+    dataset_opt: omegaconf.DictConfig
+        Config dictionary that should contain
+            - root,
+            - transform,
+            - pre_transform
+            - process_workers
+    """
+
+    def __init__(self, dataset_opt):
+        super().__init__(dataset_opt)
+
+        self.train_dataset = stjohnsSampling(
+            self._data_path,
+            split="train",
+            sample_per_epoch=176,  # -1 for all
+            radius=config_cfg.data.radius_param,
+            grid_size_d=config_cfg.data.grid_param,
+            transform=self.train_transform,
+            pre_transform=self.pre_transform,
+        )
+
+        self.val_dataset = stjohnsSampling(
+            self._data_path,
+            split="val",
+            sample_per_epoch=88,  # -1 for all
+            radius=config_cfg.data.radius_param,
+            grid_size_d=config_cfg.data.grid_param,
+            transform=self.val_transform,
+            pre_transform=self.pre_transform,
+        )
+
+        self.test_dataset = stjohnsSampling(
+            self._data_path,
+            split="test",
+            radius=config_cfg.data.radius_param,
+            sample_per_epoch=-1,  # -1 for all
+            grid_size_d=config_cfg.data.grid_param,
+            transform=self.test_transform,
+            pre_transform=self.pre_transform,
+        )
+
+    def get_tracker(self, wandb_log: bool, tensorboard_log: bool):
+        """Factory method for the tracker
+        Arguments:
+            wandb_log - Log using weight and biases
+            tensorboard_log - Log using tensorboard
+        Returns:
+            [BaseTracker] -- tracker
+        """
+        return SegmentationTracker(self, wandb_log=wandb_log, use_tensorboard=tensorboard_log)
