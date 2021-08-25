@@ -5,6 +5,7 @@ from typing import Dict, Any
 import wandb
 from torch.utils.tensorboard import SummaryWriter
 import logging
+import mlflow
 
 from torch_points3d.metrics.confusion_matrix import ConfusionMatrix
 from torch_points3d.models import model_interface
@@ -81,6 +82,7 @@ class BaseTracker:
         for metric_name, metric_value in metrics.items():
             metric_name = "{}/{}".format(metric_name.replace(self._stage + "_", ""), self._stage)
             self._writer.add_scalar(metric_name, metric_value, step)
+            mlflow.log_metric(metric_name, metric_value, step)
 
     @staticmethod
     def _remove_stage_from_metric_keys(stage, metrics):

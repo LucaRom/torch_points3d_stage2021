@@ -136,7 +136,7 @@ class Trainer:
     def train(self):
         self._is_training = True
 
-        for epoch in range(self._checkpoint.start_epoch, self._cfg.training.epochs):
+        for epoch in range(self._checkpoint.start_epoch, self._cfg.training.epochs + 1):
             log.info("EPOCH %i / %i", epoch, self._cfg.training.epochs)
 
             self._train_epoch(epoch)
@@ -149,6 +149,10 @@ class Trainer:
 
             if self._dataset.has_val_loader:
                 self._test_epoch(epoch, "val")
+
+            #Run test only if last test, need to be updated in the config file similar to eval_frequency
+            if epoch != self._cfg.training.epochs:
+                continue
 
             if self._dataset.has_test_loaders:
                 self._test_epoch(epoch, "test")
@@ -184,7 +188,7 @@ class Trainer:
 
         self._model.train()
         self._tracker.reset("train")
-        self._visualizer.reset(epoch, "train")
+        #self._visualizer.reset(epoch, "train") #Visual removed from training
         train_loader = self._dataset.train_dataloader
 
         iter_data_time = time.time()
@@ -205,8 +209,9 @@ class Trainer:
                     color=COLORS.TRAIN_COLOR
                 )
 
-                if self._visualizer.is_active:
-                    self._visualizer.save_visuals(self._model.get_current_visuals())
+                # Visual removed from training #LR
+                # if self._visualizer.is_active:
+                #     self._visualizer.save_visuals(self._model.get_current_visuals())
 
                 iter_data_time = time.time()
 
@@ -233,7 +238,8 @@ class Trainer:
         for loader in loaders:
             stage_name = loader.dataset.name
             self._tracker.reset(stage_name)
-            if self.has_visualization:
+            #if self.has_visualization: # visualisation only activated for test #LR
+            if self.has_visualization and stage_name == "test":
                 self._visualizer.reset(epoch, stage_name)
             if not self._dataset.has_labels(stage_name) and not self.tracker_options.get(
                 "make_submission", False
