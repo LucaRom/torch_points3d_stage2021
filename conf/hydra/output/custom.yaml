@@ -1,4 +1,9 @@
 # @package _global_
 hydra:
     run:
-        dir: ./outputs/${job_name}/${job_name}-${model_name}-${now:%Y%m%d_%H%M%S}
+        #dir: ./outputs/${job_name}/${job_name}-${model_name}-${now:%Y%m%d_%H%M%S}
+        dir: ./outputs/${job_name}/grid_${data.first_subsampling}/epochs_${epochs}/${now:%Y%m%d_%H%M%S}
+        #subdir: ${epochs}
+    sweep:
+        dir: ./outputs/${job_name}/grid_${data.first_subsampling}/epochs_${epochs}/
+        subdir: ${now:%Y%m%d_%H%M%S}
