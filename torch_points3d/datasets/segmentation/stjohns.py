@@ -9,7 +9,7 @@ import omegaconf
 
 from torch_geometric.data import InMemoryDataset, Data
 from torch_points3d.datasets.base_dataset import BaseDataset
-from torch_points3d.core.data_transform.transforms import RandomSphere, GridSphereSampling
+from torch_points3d.core.data_transform.transforms import RandomSphere, GridCylinderSampling, GridSphereSampling, CylinderSampling
 from torch_points3d.core.data_transform.grid_transform import GridSampling3D
 from torch_points3d.metrics.segmentation_tracker import SegmentationTracker
 
@@ -30,25 +30,6 @@ log = logging.getLogger(__name__)
     NOTES : 
 """
 
-
-################################### Initial variables and paths ###################################
-
-# Settings paths to raw dataset and splitting into train/val/test
-DIR = os.path.dirname(os.path.realpath(__file__))
-dataroot = os.path.join(DIR + "/../../../data/st_john_data")
-
-# Full raw dataset
-train_list = [f for f in os.listdir(os.path.join(dataroot, "train")) if f.endswith('.las')]
-val_list = [f for f in os.listdir(os.path.join(dataroot, "val")) if f.endswith('.las')]
-test_list = [f for f in os.listdir(os.path.join(dataroot, "test")) if f.endswith('.las')]
-
-# Small dataset for debug/tests
-train_list_small = random.choices(train_list, k=2)
-val_list_small = random.choices(val_list, k=1)
-test_list_small = random.choices(test_list, k=1)
-
-las_list = train_list_small + val_list_small + test_list_small
-
 ################################### Config files integration ###################################
 # Calling overrided conf .yaml file to use extra parameters
 """
@@ -64,8 +45,55 @@ output_dir = os.getcwd()
 config_path = os.path.join(output_dir, ".hydra/config.yaml")
 config_cfg = omegaconf.OmegaConf.load(config_path)
 
-################################### Fonctions and Utils ###################################
+################################### Paths and datasets ###################################
 
+# Settings paths to raw dataset and splitting into train/val/test
+DIR = os.path.dirname(os.path.realpath(__file__))
+dataroot = os.path.join(DIR + "/../../../data/stjohns/raw")
+
+# Full raw dataset
+train_list_full = [f for f in os.listdir(os.path.join(dataroot, "train")) if f.endswith('.las')]
+val_list_full = [f for f in os.listdir(os.path.join(dataroot, "val")) if f.endswith('.las')]
+test_list_full = [f for f in os.listdir(os.path.join(dataroot, "test")) if f.endswith('.las')]
+
+# Small dataset for debug/tests
+train_list_small = random.choices(train_list_full, k=2)
+val_list_small = random.choices(val_list_full, k=1)
+test_list_small = random.choices(test_list_full, k=1)
+
+# Proper set is chosen according to the config file (raw_folder_set)
+if config_cfg.data.raw_folder_set == "full":
+    train_list = train_list_full
+    train_spp = 10000
+    val_list = val_list_full
+    val_spp = 2000
+    test_list = test_list_full
+    test_spp = -1
+    las_list = train_list_full + val_list_full + test_list_full
+else:
+    train_list = train_list_small
+    train_spp = 88
+    val_list = val_list_small
+    val_spp = 88
+    test_list = test_list_small
+    test_spp = -1
+    las_list = train_list_small + val_list_small + test_list_small
+
+################################### Labels ###################################
+
+NUM_CLASSES = 18
+
+CLASS_LABELS = (
+    "unclassified",
+    "ground",
+    "building",
+    "noise",
+    "water",
+    "bridge deck",
+    "reserved"
+)
+
+VALID_CLASS_IDS = [1, 2, 6, 7, 9, 17, 18]
 
 ################################### Memory dataset Main Class ###################################
 
@@ -80,17 +108,23 @@ class stjohns(InMemoryDataset):
             - Remember that Errors may arise from methods called by default in parent classes.
     """
 
+    CLASS_LABELS = CLASS_LABELS
+    VALID_CLASS_IDS = VALID_CLASS_IDS
+
     def __init__(self, root, split=None, radius=None, grid_size_d=None, transform=None, pre_transform=None, pre_filter=None):
 
         # Variable are set in the class from the arguments so the can be called in the class' methods
         self._split = split
         self._radius = radius
         self._grid_size_d = grid_size_d
+        self._first_subsampling = config_cfg.data.first_subsampling
+
+        self.valid_class_idx = [idx for idx in self.VALID_CLASS_IDS]
 
         # log infos are printed in the output log file of each run
         log.info(f"Actual split is {self._split}")
         log.info(f"GridSphere sampling parameters : Radius = {self._radius}, Grid = {self._grid_size_d}")
-        log.info(f"Parameter first_subsampling is set to : {config_cfg.data.first_subsampling}")
+        log.info(f"Parameter first_subsampling is set to : {self._first_subsampling}")
         log.info(f"Number of files : {len(las_list)} using file from {config_cfg.data.processed_folder_name}")
 
         # super() specifies methods inherited from the superclass (here "InMemoryDataset")
@@ -116,8 +150,8 @@ class stjohns(InMemoryDataset):
         Set the name of the processed files folder
         Here it is fetched from the config parameter "processed_folder_name" in stjohns.yaml
         """
-        #return osp.join(self.root, config_cfg.data.processed_folder_name)
-        return osp.join(self.root, 'processed')
+        return osp.join(self.root, config_cfg.data.processed_folder_name)
+        #return osp.join(self.root, 'processed')
 
     @property
     def raw_file_names(self):
@@ -132,8 +166,8 @@ class stjohns(InMemoryDataset):
     @property
     def processed_file_names(self):
         """
-        This method defines the name of the processed datasets that are processed and goup in a .pt file. Those file
-        names also define the processed_paths list (starting from 0).
+        This method defines the name of the processed datasets that are processed and grouped in a .pt file. Those
+        files names also define the processed_paths list (starting from 0).
         """
         return ['train.pt', 'val.pt', 'test.pt']
 
@@ -161,18 +195,20 @@ class stjohns(InMemoryDataset):
         pos.
         """
 
+        # Raw list are set at the beginning in "Paths and datasets" section
+        # Details on pp_paths are found in the "processed_file_names" method
         if self._split == "train":
             pp_paths = self.processed_paths[0]
             current_split = "train"
-            raw_list = train_list_small
+            raw_list = train_list
         elif self._split == "val":
             pp_paths = self.processed_paths[1]
             current_split = "val"
-            raw_list = val_list_small
+            raw_list = val_list
         elif self._split == "test":
             pp_paths = self.processed_paths[2]
             current_split = "test"
-            raw_list = test_list_small
+            raw_list = test_list
         else:
             raise ValueError("Split %s not recognised" % self._split)
 
@@ -180,14 +216,17 @@ class stjohns(InMemoryDataset):
 
     @property
     def num_classes(self):
-        return 7
+        return len(VALID_CLASS_IDS)
 
-    def _save_data(self, data_list, pp_path):
-        data, slices = self.collate(data_list)
-        torch.save((data, slices), pp_path)
+    def _remap_labels(self, semantic_label):
+        """Remaps labels to [0 ; num_labels -1]. """
+        new_labels = semantic_label.clone()
+        mapping_dict = {indice: idx for idx, indice in enumerate(self.valid_class_idx)}
+        for source, target in mapping_dict.items():
+            mask = semantic_label == source
+            new_labels[mask] = target
 
-    def _load_data(self, path):
-        self.data, self.slices = torch.load(path)
+        return new_labels
 
     def split_process(self, current_split, raw_list, pp_paths):
         """
@@ -200,12 +239,14 @@ class stjohns(InMemoryDataset):
         # Samplers used in dataset creation
         # GridSphereSampling fit the point clouds to a grid and samples a sphere around the center point. The radius
         # and grid_size are fed from the dataset conf file.
-        _sampler = GridSphereSampling(radius=self._radius, grid_size=self._grid_size_d, delattr_kd_tree=True,
+        gss_sampler = GridSphereSampling(radius=self._radius, grid_size=self._grid_size_d, delattr_kd_tree=True,
                                       center=False)
+
+        #Cylender
 
         # The GridSampling3d resamples the dataset with the center point of a voxel of the set size. This is used to
         # reduce the dataset size
-        _grid_sampler = GridSampling3D(size=1)
+        _grid_sampler = GridSampling3D(size=self._first_subsampling)
 
         # Check if the processed file already exist for this split, if not, proceed with the processing
         if os.path.exists(pp_paths):
@@ -213,6 +254,7 @@ class stjohns(InMemoryDataset):
         else:
             data_list = []
             for i in raw_list:
+                #print(f"processing {i}")
                 # Load the .las file and extract needed data
                 las_file = laspy.read(os.path.join(dataroot, current_split, i))
                 las_xyz = np.stack([las_file.x, las_file.y, las_file.z], axis=1)
@@ -224,18 +266,20 @@ class stjohns(InMemoryDataset):
                 data = Data(pos=torch.from_numpy(las_xyz).type(torch.float), y=y)
 
                 if current_split == "train" or current_split == "val":
-                    # reduced_data = _grid_sampler(data)  # Resampling
-                    # data = Data(pos=reduced_data.pos, y=reduced_data.y)
+                    reduced_data = _grid_sampler(data)  # Resampling
+                    data = Data(pos=reduced_data.pos, y=reduced_data.y)
                     data_list.append(data)
 
                     log.info("Processed file %s, nb points = %i", i, data.pos.shape[0])
 
                 elif current_split == "test":
-                    data_samples = _sampler(data.clone())
+                    data_samples = gss_sampler(data.clone())
 
                     # If sampler results in a list, we first remove samples with no points, else we save the whole data
                     if isinstance(data_samples, list):
+                        print(f"Filtering {len(data_samples)} data samples")
                         for my_sample in data_samples:
+                            #print(f"heres sample # {my_sample}")
                             if len(my_sample.y) > 0:
                                 data_list.append(my_sample)
                     else:
@@ -248,7 +292,13 @@ class stjohns(InMemoryDataset):
 
             print(f"Saving full data list in {pp_paths}")
             self._save_data(data_list, pp_paths)
-            print("Saving done")
+
+    def _save_data(self, data_list, pp_path):
+        data, slices = self.collate(data_list)
+        torch.save((data, slices), pp_path)
+
+    def _load_data(self, path):
+        self.data, self.slices = torch.load(path)
 
 class stjohnsSampling(stjohns):
     """
@@ -325,7 +375,7 @@ class stjohnsWrapper(BaseDataset):
         self.train_dataset = stjohnsSampling(
             self._data_path,
             split="train",
-            sample_per_epoch=176,  # -1 for all
+            sample_per_epoch=train_spp,  # -1 for all
             radius=config_cfg.data.radius_param,
             grid_size_d=config_cfg.data.grid_param,
             transform=self.train_transform,
@@ -335,7 +385,7 @@ class stjohnsWrapper(BaseDataset):
         self.val_dataset = stjohnsSampling(
             self._data_path,
             split="val",
-            sample_per_epoch=88,  # -1 for all
+            sample_per_epoch=val_spp,  # -1 for all
             radius=config_cfg.data.radius_param,
             grid_size_d=config_cfg.data.grid_param,
             transform=self.val_transform,
@@ -346,7 +396,7 @@ class stjohnsWrapper(BaseDataset):
             self._data_path,
             split="test",
             radius=config_cfg.data.radius_param,
-            sample_per_epoch=-1,  # -1 for all
+            sample_per_epoch=test_spp,  # -1 for all
             grid_size_d=config_cfg.data.grid_param,
             transform=self.test_transform,
             pre_transform=self.pre_transform,

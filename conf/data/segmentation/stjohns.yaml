@@ -5,18 +5,18 @@ class: stjohns.stjohnsWrapper
 dataset_name: "stjohns"
 dataroot: data
 use_category: False     #
+donotcare_class_ids: []
 
-#first_subsampling: 0.02
 first_subsampling : 0.1 # Minimum distance between points in the samples fed to KPconv
                         # Very correlated with memory used. Need to verify if linked to this : https://github.com/HuguesTHOMAS/KPConv/issues/135#issuecomment-771032535
 
 # Additional settings for the GridSampling and processed_ba files
 grid_param: 10
 radius_param: 10
-#raw_folder_param: full # Choice between "full" or "small"
-#processed_folder_name: processed_${data.raw_folder_param}_${data.grid_param}_${data.radius_param}_01_rdm_pretrans
+raw_folder_set: full # Choice between "full" or "small"
+processed_folder_name: processed_${data.raw_folder_set}_${data.first_subsampling}_${data.grid_param}_${data.radius_param}
 
-# training parametersfa
+# training parameters
 num_train_tuiles: 20
 num_val_tuiles: 4
 
