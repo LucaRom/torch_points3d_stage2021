@@ -280,6 +280,47 @@ class RandomSphere(object):
     def __call__(self, data):
         if isinstance(data, list):
             data = [self._process(d) for d in data]
+            #data = self._process(random.choice(data)) #Previously done in dataset
+        else:
+            data = self._process(data)
+        return data
+
+    def __repr__(self):
+        return "{}(radius={}, center={}, sampling_strategy={})".format(
+            self.__class__.__name__, self._radius, self._center, self._sampling_strategy
+        )
+
+
+class RandomCylinder(object):
+    """Select points within a sphere of a given radius. The centre is chosen randomly within the point cloud.
+
+    Parameters
+    ----------
+    radius: float
+        Radius of the sphere to be sampled.
+    strategy: str
+        choose between `random` and `freq_class_based`. The `freq_class_based` \
+        favors points with low frequency class. This can be used to balance unbalanced datasets
+    center: bool
+        if True then the sphere will be moved to the origin
+    """
+
+    def __init__(self, radius, strategy="random", class_weight_method="sqrt", center=True):
+        self._radius = eval(radius) if isinstance(radius, str) else float(radius)
+        self._sampling_strategy = SamplingStrategy(strategy=strategy, class_weight_method=class_weight_method)
+        self._center = center
+
+    def _process(self, data):
+        # apply sampling strategy
+        random_center = self._sampling_strategy(data)
+        random_center = np.asarray(data.pos[random_center])[np.newaxis]
+        cylinder_sampling = CylinderSampling(self._radius, random_center, align_origin=True)
+        return cylinder_sampling(data)
+
+    def __call__(self, data):
+        if isinstance(data, list):
+            data = [self._process(d) for d in data]
+            #data = self._process(random.choice(data)) #Previously done in dataset
         else:
             data = self._process(data)
         return data
@@ -366,6 +407,15 @@ class CylinderSampling:
             self._centre = np.expand_dims(self._centre, 0)
         self._align_origin = align_origin
 
+
+        # chosen_label = np.random.choice(self._labels, p=self._label_counts)
+        # valid_centres = self._centres_for_sampling[self._centres_for_sampling[:, 4] == chosen_label]
+        # centre_idx = int(random.random() * (valid_centres.shape[0] - 1))
+        # centre = valid_centres[centre_idx]
+        # area_data = self._datas[centre[3].int()]
+        # cylinder_sampler = cT.CylinderSampling(self._radius, centre[:3], align_origin=False)
+        # return cylinder_sampler(area_data)
+
     def __call__(self, data):
         num_points = data.pos.shape[0]
         if not hasattr(data, self.KDTREE_KEY):
@@ -374,8 +424,21 @@ class CylinderSampling:
         else:
             tree = getattr(data, self.KDTREE_KEY)
 
-        t_center = torch.FloatTensor(self._centre)
-        ind = torch.LongTensor(tree.query_radius(self._centre, r=self._radius)[0])
+        t_center = torch.FloatTensor(self._centre[:, :-1])
+        #ind = torch.LongTensor(tree.query_radius(self._centre, r=self._radius)[0])
+        ind = torch.LongTensor(tree.query_radius(self._centre[:, :-1], r=self._radius)[0])
+
+
+        # num_points = data.pos.shape[0]
+        # if not hasattr(data, self.KDTREE_KEY):
+        #     tree = KDTree(np.asarray(data.pos), leaf_size=50)
+        #     setattr(data, self.KDTREE_KEY, tree)
+        # else:
+        #     tree = getattr(data, self.KDTREE_KEY)
+        #
+        # t_center = torch.FloatTensor(self._centre)
+        # ind = torch.LongTensor(tree.query_radius(self._centre, r=self._radius)[0])
+
 
         new_data = Data()
         for key in set(data.keys):

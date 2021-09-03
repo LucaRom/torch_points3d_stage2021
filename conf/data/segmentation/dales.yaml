@@ -13,16 +13,17 @@ first_subsampling : 0.1 # Minimum distance between points in the samples fed to 
 # Additional settings for the GridSampling and processed_ba files
 grid_param: 10
 radius_param: 10
-raw_folder_param: small # Choice between "full" or "small"
-processed_folder_name: processed_${data.raw_folder_param}_${data.grid_param}_${data.radius_param}_01_randomwrapper
+raw_folder_set: full # Choice between "full" or "small"
+processed_folder_name: processed_${data.raw_folder_set}_${data.grid_param}_${data.radius_param}_01_15_02
+
+# training parametersfa
+num_train_tuiles: 15
+num_val_tuiles: 2
 
 #pre_transform:
-#  - transform: GridSphereSampling
+#  - transform: GridSampling3D       # Samples on a grid
 #    params:
-#      radius: 15
-#      grid_size: 15
-#      delattr_kd_tree: True
-#      center: True
+#        size: ${data.first_subsampling}
 
 train_transform:
   - transform: AddOnes

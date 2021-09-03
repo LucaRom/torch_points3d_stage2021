@@ -7,9 +7,11 @@ import random
 import os.path as osp
 import omegaconf
 
+from tqdm import tqdm
+
 from torch_geometric.data import InMemoryDataset, Data
 from torch_points3d.datasets.base_dataset import BaseDataset
-from torch_points3d.core.data_transform.transforms import RandomSphere, GridCylinderSampling, GridSphereSampling, CylinderSampling
+from torch_points3d.core.data_transform.transforms import RandomSphere, GridCylinderSampling, GridSphereSampling, RandomCylinder
 from torch_points3d.core.data_transform.grid_transform import GridSampling3D
 from torch_points3d.metrics.segmentation_tracker import SegmentationTracker
 
@@ -18,14 +20,20 @@ log = logging.getLogger(__name__)
 ################################### Datasets general notes and structure ###################################
 
 """
-    The dataset is defided in 3 main class : 
+    The dataset is devided in 3 main classes : 
         - stjohns
         - stjohnsSampling
         - stjohnsWrapper
         
-    - stjonhs2021 is the main one ... it stores the basic dataset ... etc etc...
-    - the second one sampleds the first one as needed
-    - the third one is a final wrapper that created the different dataset as needed in the framework..
+    - stjonhs is the main class. It takes the raw data and processes it into .pt files. It is usually where you would
+    change code.
+    
+    - stjohnsSampling is built on stjohns class. It is used as a way to sample the data created with the main class, 
+    mainly to handle the number of samples per epoch and per split. Only the __len__ and get() method are overwritten.
+    
+    - stjohnsWrapper is a final wrapper that creates the different dataset (train, val test) as needed in the framework.
+    It calls stjohnsSampling with the desired arguments for the parameters. It is this function that is called in the 
+    config files for a training. (data=segmentation/stjonhs)
 
     NOTES : 
 """
@@ -38,7 +46,10 @@ log = logging.getLogger(__name__)
     NOTES : The config file called is the overrided one from the OUTPUT folder of the current training/eval/etc run
             This way you can call parameters from all conf files since they are grouped in the output conf, but more
             importantly, it allows to use overrided parameters passed to a specific job (ie, from the command line).
-            THEREFORE following lines and called parameters/arguments will raise errors if called outside of a run.          
+            THEREFORE following lines and called parameters/arguments will raise errors if called outside of a run.
+                    
+            This was first created to allow using different config files when running simultaneous run from the command
+            line (ie. on 2 different GPUs). 
 """
 
 output_dir = os.getcwd()
@@ -59,9 +70,10 @@ test_list_full = [f for f in os.listdir(os.path.join(dataroot, "test")) if f.end
 # Small dataset for debug/tests
 train_list_small = random.choices(train_list_full, k=2)
 val_list_small = random.choices(val_list_full, k=1)
-test_list_small = random.choices(test_list_full, k=1)
+test_list_small = random.choices(test_list_full, k=2)
 
 # Proper set is chosen according to the config file (raw_folder_set)
+# Uses of the small dataset is meant for quicker tests/debugging
 if config_cfg.data.raw_folder_set == "full":
     train_list = train_list_full
     train_spp = 10000
@@ -80,8 +92,10 @@ else:
     las_list = train_list_small + val_list_small + test_list_small
 
 ################################### Labels ###################################
+# Those variables are used while remapping labels and when the number of class
+# is needed
 
-NUM_CLASSES = 18
+NUM_CLASSES = 7
 
 CLASS_LABELS = (
     "unclassified",
@@ -95,6 +109,28 @@ CLASS_LABELS = (
 
 VALID_CLASS_IDS = [1, 2, 6, 7, 9, 17, 18]
 
+################################### utils ###################################
+'''
+ gss_sampler :   GridSphereSampling fit the point clouds to a grid and samples a sphere around the center point.
+ _grid_sampler : GridSampling3d resamples the dataset with the center point of a voxel of the set size. This is used to
+                 reduce the number of points.
+ rs_sampler :    RandomSphereSampling samples a random sphere of points within the dataset, it is slightly biased to 
+                 favor under represented classes.     
+ rc_sampler :    RandomCylinderSampling same as rs_sampler but with a cylinder shape/               
+'''
+
+# Samplers arguments from config file
+gss_radius = config_cfg.data.radius_param       # GridSphereSampling radius
+gss_grid = config_cfg.data.grid_param           # GridSphereSampling grid size
+rsc_radius = config_cfg.data.sampler_radius     # RandomCylinder and RandomSphere Sampling radius
+gs3d_grid = config_cfg.data.first_subsampling   # GridSphere3d grid size (minimum distance between points)
+
+# Samplers used in dataset creation
+gss_sampler = GridSphereSampling(radius=gss_radius, grid_size=gss_grid, delattr_kd_tree=True, center=False)
+rs_sampler = RandomSphere(radius=rsc_radius, strategy="freq_class_based")
+rc_sampler = RandomCylinder(radius=rsc_radius, strategy="freq_class_based")
+_grid_sampler = GridSampling3D(size=gs3d_grid)
+
 ################################### Memory dataset Main Class ###################################
 
 class stjohns(InMemoryDataset):
@@ -105,7 +141,7 @@ class stjohns(InMemoryDataset):
 
     NOTES : - If a method is called, it's either an existing one that is being override (from the parent class) or a
             new one created for the dataset.
-            - Remember that Errors may arise from methods called by default in parent classes.
+            - Errors may arise from methods called by default in parent classes.
     """
 
     CLASS_LABELS = CLASS_LABELS
@@ -118,12 +154,13 @@ class stjohns(InMemoryDataset):
         self._radius = radius
         self._grid_size_d = grid_size_d
         self._first_subsampling = config_cfg.data.first_subsampling
+        self._main_sampler = config_cfg.data.main_sampler
 
         self.valid_class_idx = [idx for idx in self.VALID_CLASS_IDS]
 
         # log infos are printed in the output log file of each run
         log.info(f"Actual split is {self._split}")
-        log.info(f"GridSphere sampling parameters : Radius = {self._radius}, Grid = {self._grid_size_d}")
+        log.info(f"Sampler's parameters : Radius = {self._radius}, Grid = {self._grid_size_d}")
         log.info(f"Parameter first_subsampling is set to : {self._first_subsampling}")
         log.info(f"Number of files : {len(las_list)} using file from {config_cfg.data.processed_folder_name}")
 
@@ -186,12 +223,14 @@ class stjohns(InMemoryDataset):
         the specific dataset (_split). Each .las file is processed and group to respective dataset in the .pt format
         (train.pt, val.pt, test.pt).
 
+        It calls the split_process method to process data.
+
         Information is extracted from .las file to feed the Data(pos, x, y) class where :
             pos = x, y, z (coordinates)
             x = list of features (if any)
             y = labels (if any)
 
-        Note that the x and y arguments from the Data() class are not related to the x and y coordinates needed for
+        NOTES : - The x and y arguments from the Data() class are not related to the x and y coordinates needed for
         pos.
         """
 
@@ -230,48 +269,56 @@ class stjohns(InMemoryDataset):
 
     def split_process(self, current_split, raw_list, pp_paths):
         """
-        Method called to process raw data according to the actual split/dataset
+        Method called to process raw data according to the actual split/dataset. It uses laspy as the main librairy to
+        extract the data.
+
+        Information is extracted from .las file to feed the Data(pos, x, y) class where :
+            pos = x, y, z (coordinates)
+            x = list of features (if any)
+            y = labels (if any)
+
+        NOTES : - The x and y arguments from the Data() class are not related to the x and y coordinates needed for
+        pos.
 
         :param current_split: Specifies which dataset is actually processed (train, val or test)
         :param raw_list: Path to the raw data folder
         :param pp_paths: Processed path (see processed_file_names())
         """
-        # Samplers used in dataset creation
-        # GridSphereSampling fit the point clouds to a grid and samples a sphere around the center point. The radius
-        # and grid_size are fed from the dataset conf file.
-        gss_sampler = GridSphereSampling(radius=self._radius, grid_size=self._grid_size_d, delattr_kd_tree=True,
-                                      center=False)
-
-        #Cylender
-
-        # The GridSampling3d resamples the dataset with the center point of a voxel of the set size. This is used to
-        # reduce the dataset size
-        _grid_sampler = GridSampling3D(size=self._first_subsampling)
 
         # Check if the processed file already exist for this split, if not, proceed with the processing
         if os.path.exists(pp_paths):
             print(f"Processed file for {current_split} already exists, skipping processing")
         else:
+            if self._main_sampler == "sphere":  # Select sampler according to config file
+                main_sampler = rs_sampler
+            else:
+                main_sampler = rc_sampler
+
             data_list = []
-            for i in raw_list:
-                #print(f"processing {i}")
-                # Load the .las file and extract needed data
+            for j, i in enumerate(raw_list, 1):
+                # Load the .las file and extract needed data (using laspy)
                 las_file = laspy.read(os.path.join(dataroot, current_split, i))
                 las_xyz = np.stack([las_file.x, las_file.y, las_file.z], axis=1)
                 las_label = np.array(las_file.classification).astype(np.int)
                 y = torch.from_numpy(las_label)
-                y = self._remap_labels(y)
+                y = self._remap_labels(y) # Remapping label necessary is not [0, n] already
 
                 # Feed extracted data to the Data() class. Data is also resampled for train and val.
                 data = Data(pos=torch.from_numpy(las_xyz).type(torch.float), y=y)
 
-                if current_split == "train" or current_split == "val":
-                    reduced_data = _grid_sampler(data)  # Resampling
-                    data = Data(pos=reduced_data.pos, y=reduced_data.y)
-                    data_list.append(data)
-
+                # This current strategy creates a pool of 30 000 random samples that will be called during the
+                # training process. num_needed defines the number of samples required for each tile
+                if current_split == "train":
+                    num_needed = 30000 // len(raw_list)
+                    self._sort_samples(num_needed, main_sampler, j, data_list, data)
                     log.info("Processed file %s, nb points = %i", i, data.pos.shape[0])
 
+                elif current_split == "val":
+                    num_needed = 3000 // len(raw_list)
+                    self._sort_samples(num_needed, main_sampler, j, data_list, data)
+                    log.info("Processed file %s, nb points = %i", i, data.pos.shape[0])
+
+                # Test data is handled differently because we want to test over all the points
                 elif current_split == "test":
                     data_samples = gss_sampler(data.clone())
 
@@ -279,8 +326,7 @@ class stjohns(InMemoryDataset):
                     if isinstance(data_samples, list):
                         print(f"Filtering {len(data_samples)} data samples")
                         for my_sample in data_samples:
-                            #print(f"heres sample # {my_sample}")
-                            if len(my_sample.y) > 0:
+                            if len(my_sample.y) > 1:
                                 data_list.append(my_sample)
                     else:
                         data_list.append(data_samples)
@@ -292,6 +338,20 @@ class stjohns(InMemoryDataset):
 
             print(f"Saving full data list in {pp_paths}")
             self._save_data(data_list, pp_paths)
+
+    @staticmethod
+    def _sort_samples(num_needed, main_sampler, num_file, data_list, data):
+        # Quick method to create the random samples and remove data with 1 or 0 points. 0 points data will rise errors
+        # while 1 would not, but we still remove it in that case.
+        samples_pbar = tqdm(total=num_needed)
+        while len(data_list) < (num_file * num_needed):
+            random_data = main_sampler(data)
+            if len(random_data.y) > 1:
+                data_list.append(random_data)
+                samples_pbar.update(1)
+            else:
+                continue
+        samples_pbar.close()
 
     def _save_data(self, data_list, pp_path):
         data, slices = self.collate(data_list)
@@ -330,20 +390,18 @@ class stjohnsSampling(stjohns):
         super().__init__(root, split=split, radius=radius, grid_size_d=grid_size_d, transform=transform,
                          pre_transform=pre_transform, pre_filter=pre_filter)
 
-    def __len__(self):
+    def __len__(self):  # Defines length of dataset (number of samples fetch per epoch)
         if self._sample_per_epoch > 0:
             return self._sample_per_epoch
         else:
             return len(self._datas)
 
-    def get(self, idx):
-        my_second_sampler = RandomSphere(radius=10, strategy="freq_class_based")
+    def get(self, idx):  # Creates the index, based on __len__, to feed the dataloader (in this case)
         if self._split == "test":
             return self._datas[idx].clone()
-        else:
-            my_samples_temp = random.choice(self._datas)
-            my_samples_sample = my_second_sampler(my_samples_temp)
-            return my_samples_sample
+        else:  # Random idx is created to sample data from full length dataset instead of sample_per_epoch
+            random_idx = random.randint(0, len(self._datas)-1)
+            return self._datas[random_idx].clone()
 
     def process(self):  # We have to include this method, otherwise the parent class skips processing
         super().process()
@@ -358,15 +416,9 @@ class stjohnsSampling(stjohns):
         self._datas = torch.load(path)
 
 class stjohnsWrapper(BaseDataset):
-    """ Wrapper around Dales that creates train and test datasets.
-    Parameters
-    ----------
-    dataset_opt: omegaconf.DictConfig
-        Config dictionary that should contain
-            - root,
-            - transform,
-            - pre_transform
-            - process_workers
+    """ Wrapper around stjohnsSamplins that creates train,val and test datasets.
+    This class is the one that should be called in config files.
+
     """
 
     def __init__(self, dataset_opt):
@@ -401,6 +453,15 @@ class stjohnsWrapper(BaseDataset):
             transform=self.test_transform,
             pre_transform=self.pre_transform,
         )
+
+        # self.test_dataset = stjohns(
+        #     self._data_path,
+        #     split="test",
+        #     radius=config_cfg.data.radius_param,
+        #     grid_size_d=config_cfg.data.grid_param,
+        #     transform=self.test_transform,
+        #     pre_transform=self.pre_transform,
+        # )
 
     def get_tracker(self, wandb_log: bool, tensorboard_log: bool):
         """Factory method for the tracker

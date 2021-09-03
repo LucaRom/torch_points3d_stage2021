@@ -1,6 +1,6 @@
 # Those arguments defines the training hyper-parameters
 #epochs: 550
-epochs: 5
+epochs: 50
 num_workers: 7
 #batch_size: 4
 batch_size: 6

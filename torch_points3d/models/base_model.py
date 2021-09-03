@@ -56,7 +56,6 @@ class BaseModel(torch.nn.Module, TrackerInterface, DatasetInterface, CheckpointI
         self._spatial_ops_dict: Dict = {}
         self._num_epochs = 0
         self._num_batches = 0
-        #self._num_samples = 500
         self._num_samples = -1
         self._schedulers = {}
         self._accumulated_gradient_step = None

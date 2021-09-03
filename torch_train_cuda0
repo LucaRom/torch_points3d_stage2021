@@ -1,0 +1,22 @@
+#!/bin/bash
+
+#echo "Setting up torch_points3d path and environment"
+
+#cd /wspace/disk01/lidar/classification_pts/torch-points3d
+
+#echo "Path changed"
+
+#source activate torch_points3d
+#conda info --envs
+
+#echo "torch_points3d environment activated"
+#echo "There you go!"
+
+
+
+export REQUESTS_CA_BUNDLE=/export/sata01/wspace/conda_envs/NRCAN-Root-2019-B64.cer 
+#export WANDB_MODE=offline
+
+#wandb offline
+
+python train.py task=segmentation models=segmentation/kpconv model_name=KPConvPaper data=segmentation/dales training=kpconv

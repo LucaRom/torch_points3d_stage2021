@@ -46,7 +46,7 @@ class VotingModule(nn.Module):
         -------
         data:
             - pos: position of the vote (centre of the box)
-            - x: feature of the vote (original feature + processed feature)
+            - x: feature of the vote (original feature + processed_ba feature)
             - seed_pos: position of the original point
         """
         if 3 < data.pos.dim() and data.pos.dim() <= 1:

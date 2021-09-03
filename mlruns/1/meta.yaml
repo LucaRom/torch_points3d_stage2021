@@ -1,0 +1,4 @@
+artifact_location: /export/sata01/wspace/lidar/classification_pts/torch-points3d/mlruns/1
+experiment_id: '1'
+lifecycle_stage: active
+name: stjohns_small

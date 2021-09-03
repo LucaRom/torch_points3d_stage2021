@@ -12,18 +12,23 @@
 # #     print (toe)
 
 
-import laspy
-from laspy.file import File
-import numpy as np
+# import laspy
+# from laspy.file import File
+# import numpy as np
+#
+# import torch
 
-import torch
-
-t = torch.cuda.get_device_properties(0).total_memory
-r = torch.cuda.memory_reserved(0)
-a = torch.cuda.memory_allocated(0)
-f = r-a  # free inside reserved
-
-print(f"Total {t}, reserved {r}, allocated {a}, free {f}" )
+#
+# import certifi
+#
+# print(certifi.where())
+#
+# # t = torch.cuda.get_device_properties(0).total_memory
+# # r = torch.cuda.memory_reserved(0)
+# # a = torch.cuda.memory_allocated(0)
+# # f = r-a  # free inside reserved
+#
+# print(f"Total {t}, reserved {r}, allocated {a}, free {f}" )
 
 # # las = laspy.read('/wspace/disk01/lidar/classification_pts/torch-points3d/data/dales/raw/5080_54400.las')
 #

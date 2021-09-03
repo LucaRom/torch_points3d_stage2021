@@ -255,7 +255,7 @@ class Res16UNetBase(ResNetBase):
     CONV_TYPE = ConvType.SPATIAL_HYPERCUBE_TEMPORAL_HYPERCROSS
 
     # To use the model, must call initialize_coords before forward pass.
-    # Once data is processed, call clear to reset the model before calling initialize_coords
+    # Once data is processed_ba, call clear to reset the model before calling initialize_coords
     def __init__(self, in_channels, out_channels, D=3, conv1_kernel_size=3, **kwargs):
         super(Res16UNetBase, self).__init__(in_channels, out_channels, D, conv1_kernel_size)
 

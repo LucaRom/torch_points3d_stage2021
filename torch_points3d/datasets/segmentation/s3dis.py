@@ -230,7 +230,7 @@ class S3DIS1x1Dataset(BaseDataset):
 
 
 class S3DISOriginalFused(InMemoryDataset):
-    """ Original S3DIS dataset. Each area is loaded individually and can be processed using a pre_collate transform. 
+    """ Original S3DIS dataset. Each area is loaded individually and can be processed_ba using a pre_collate transform.
     This transform can be used for example to fuse the area into a single space and split it into 
     spheres or smaller regions. If no fusion is applied, each element in the dataset is a single room by default.
 

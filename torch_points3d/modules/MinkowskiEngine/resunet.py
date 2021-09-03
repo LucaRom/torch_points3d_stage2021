@@ -14,7 +14,7 @@ class ResUNet2(ME.MinkowskiNetwork):
     TR_CHANNELS = [None, 32, 64, 64, 128]
 
     # To use the model, must call initialize_coords before forward pass.
-    # Once data is processed, call clear to reset the model before calling initialize_coords
+    # Once data is processed_ba, call clear to reset the model before calling initialize_coords
     def __init__(
         self, in_channels=3, out_channels=32, bn_momentum=0.01, normalize_feature=True, conv1_kernel_size=5, D=3
     ):

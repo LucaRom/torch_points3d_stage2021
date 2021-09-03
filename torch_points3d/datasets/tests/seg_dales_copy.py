@@ -102,8 +102,8 @@ class Dales(InMemoryDataset):
 
         super().__init__(root, transform=transform, pre_transform=pre_transform, pre_filter=pre_filter)
 
-        # Processed path : a mieux expliquer pour final -> doit pointer vert les dossier "processed"
-        # les processed path sont probablement créé par la section "processed file names" qui retourne actuellement train.pt et test.pt
+        # Processed path : a mieux expliquer pour final -> doit pointer vert les dossier "processed_ba"
+        # les processed_ba path sont probablement créé par la section "processed_ba file names" qui retourne actuellement train.pt et test.pt
 
         # Load the appropriate .pt file according to the wrapper class argument (DalesDataset())
         if split == "train":
@@ -125,7 +125,7 @@ class Dales(InMemoryDataset):
     @property
     def processed_file_names(self):
         """
-        Ici on définit le nom des fichier processed qui deviendront les "processed_paths" appelé plus haut
+        Ici on définit le nom des fichier processed_ba qui deviendront les "processed_paths" appelé plus haut
 
         """
         return ['train.pt', 'test.pt']
@@ -136,8 +136,8 @@ class Dales(InMemoryDataset):
 
     def process(self):
         """
-        On parcours la listw des fichiers "raw" qui ne sont pas "processed" et on les traite pour les
-        sauvegarder en format .pt dans le dossier processed
+        On parcours la listw des fichiers "raw" qui ne sont pas "processed_ba" et on les traite pour les
+        sauvegarder en format .pt dans le dossier processed_ba
 
         Chaque fichier .las devient un fichier .pt qui est alimenté par la fonction Data(pos= , x= et y)
         ou pos = x, y, z , x = liste des features et y les labels

@@ -1,0 +1,15 @@
+artifact_uri: /export/sata01/wspace/lidar/classification_pts/torch-points3d/mlruns/1/a35663716b89449793f469e447532acd/artifacts
+end_time: 1630419812372
+entry_point_name: ''
+experiment_id: '1'
+lifecycle_stage: active
+name: ''
+run_id: a35663716b89449793f469e447532acd
+run_uuid: a35663716b89449793f469e447532acd
+source_name: ''
+source_type: 4
+source_version: ''
+start_time: 1630419792901
+status: 4
+tags: []
+user_id: lromanin

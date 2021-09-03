@@ -1,7 +1,9 @@
 # Those arguments defines the training hyper-parameters
 #epochs: 550
 epochs: 5
-num_workers: 7
+num_workers: 4
+#num_workers: 7
+#num_workers: 14
 #batch_size: 4
 batch_size: 8
 shuffle: False

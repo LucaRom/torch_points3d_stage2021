@@ -1,0 +1,4 @@
+artifact_location: /export/sata01/wspace/lidar/classification_pts/torch-points3d/mlruns/0
+experiment_id: '0'
+lifecycle_stage: active
+name: Default

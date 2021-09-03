@@ -121,7 +121,7 @@ class MinkUNetBase(ResNetBase):
     OUT_TENSOR_STRIDE = 1
 
     # To use the model, must call initialize_coords before forward pass.
-    # Once data is processed, call clear to reset the model before calling
+    # Once data is processed_ba, call clear to reset the model before calling
     # initialize_coords
     def __init__(self, in_channels, out_channels, D=3, **kwargs):
         ResNetBase.__init__(self, in_channels, out_channels, D)

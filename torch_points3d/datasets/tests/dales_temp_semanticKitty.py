@@ -80,7 +80,7 @@ class SemanticKitti(Dataset):
     def __init__(self, root, split="trainval", transform=None, process_workers=1, pre_transform=None):
         r"""
         root = Where the dataset should be stored. This folder is split
-        into raw_dir (downloaded dataset) and processed_dir (processed data).
+        into raw_dir (downloaded dataset) and processed_dir (processed_ba data).
         """
 
         #assert self.REMAPPING_MAP[0] == IGNORE_LABEL  # Make sure we have the same convention for unlabelled data
